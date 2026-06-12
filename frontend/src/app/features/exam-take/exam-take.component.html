@@ -1,0 +1,300 @@
+<div
+  class="exam-container"
+  [class.exam-active]="examStarted && !examFinished"
+>
+  @if (examBlocked) {
+    <mat-card class="result-card blocked-card">
+      <mat-icon class="blocked-icon">block</mat-icon>
+      <h1>Examen no disponible</h1>
+      <p>{{ blockMessage }}</p>
+    </mat-card>
+  } @else if (examFinished) {
+    <mat-card class="result-card" [class.violation-card]="examTerminatedForViolation">
+      <mat-icon class="result-icon">{{ examTerminatedForViolation ? 'warning' : (examFinalized ? 'flag' : 'check_circle') }}</mat-icon>
+      <h1>
+        @if (examTerminatedForViolation) {
+          Examen cerrado
+        } @else if (examFinalized) {
+          Examen finalizado
+        } @else {
+          Intento completado
+        }
+      </h1>
+      @if (examTerminatedForViolation) {
+        <p class="violation-message">
+          El examen fue cerrado por cambiar de pestaña o ventana. No podrás realizar más intentos.
+        </p>
+      }
+      @if (finalScore !== null && displayTotalScore !== null) {
+        <p class="score">Calificación: {{ finalScore }} / {{ displayTotalScore }}</p>
+      }
+      @if (maxAttempts > 1 && currentAttemptNumber && !examFinalized) {
+        <p class="attempts-info">
+          Intento {{ currentAttemptNumber }} de {{ maxAttempts }}
+        </p>
+      }
+      @if (maxAttempts > 1 && !examFinalized) {
+        <p class="attempts-info">
+          Intentos restantes: {{ attemptsRemaining }} de {{ maxAttempts }}
+        </p>
+      }
+      @if (examFinalized) {
+        <p class="attempt-hint">
+          Tu calificación final corresponde al último intento realizado.
+        </p>
+      } @else if ((canStartNewAttempt || canFinishEarly) && !examTerminatedForViolation) {
+        @if (requiresNextAttempt) {
+          <p class="attempt-hint">
+            Debes enviar cada intento antes de iniciar el siguiente.
+          </p>
+        } @else {
+          <p class="attempt-hint">
+            Puedes realizar otro intento o finalizar el examen con la calificación de este intento.
+          </p>
+        }
+        <div class="result-actions">
+          @if (canStartNewAttempt) {
+            <button mat-flat-button color="primary" (click)="prepareAnotherAttempt()">
+              Realizar otro intento
+            </button>
+          }
+          @if (canFinishEarly) {
+            <button mat-stroked-button color="accent" (click)="finishExamEarly()">
+              Finalizar examen con esta calificación
+            </button>
+          }
+        </div>
+      }
+    </mat-card>
+  } @else if (!examStarted) {
+    <mat-card class="setup-card">
+      <h1>{{ pendingResume ? 'Continuar examen' : 'Preparación del examen' }}</h1>
+      @if (pendingResume) {
+        <p class="resume-hint">
+          Tienes un examen en progreso. Habilita la cámara y continúa donde lo dejaste.
+        </p>
+      } @else {
+        <p>Antes de iniciar, registra tu nombre completo y habilita tu cámara. El sistema monitoreará tu comportamiento durante la prueba.</p>
+      }
+      @if (requireAttemptVideo) {
+        <p class="video-hint">
+          Este examen requiere grabar video durante todo el intento. El video se enviará automáticamente al finalizar.
+        </p>
+      }
+      <p class="tab-policy-hint">
+        Si cambias de pestaña o ventana durante el examen, este se cerrará de inmediato y no podrás realizar más intentos.
+      </p>
+
+      @if (inviteeEmail) {
+        <p class="invitee-email">Correo de invitación: {{ inviteeEmail }}</p>
+      }
+      @if (maxAttempts > 1) {
+        <p class="attempts-info">
+          @if (currentAttemptNumber) {
+            Intento {{ currentAttemptNumber }} de {{ maxAttempts }}
+          } @else {
+            Intentos disponibles: {{ maxAttempts }}
+            @if (attemptsRemaining < maxAttempts) {
+              · Completados: {{ maxAttempts - attemptsRemaining }} / {{ maxAttempts }}
+            }
+          }
+        </p>
+        @if (attemptPolicy === 'sequential') {
+          <p class="attempt-hint">Los intentos son secuenciales: debes enviar cada uno antes del siguiente.</p>
+        } @else {
+          <p class="attempt-hint">Puedes usar tus intentos en cualquier momento antes del cierre.</p>
+        }
+      }
+
+      <mat-form-field appearance="outline" class="full-width">
+        <mat-label>Nombre completo</mat-label>
+        <input
+          matInput
+          [(ngModel)]="inviteeFullName"
+          placeholder="Ej. Juan Pérez García"
+          maxlength="255"
+          autocomplete="name"
+        />
+      </mat-form-field>
+
+      <div class="camera-preview">
+        <video #setupVideo autoplay playsinline muted class="video-feed"></video>
+        <canvas #canvasElement hidden></canvas>
+      </div>
+
+      @if (!cameraReady) {
+        <button mat-flat-button color="primary" (click)="enableCamera()">
+          <mat-icon>videocam</mat-icon> Habilitar cámara
+        </button>
+      } @else {
+        <button mat-flat-button color="accent" (click)="startExam()" [disabled]="!canStartExam">
+          <mat-icon>{{ pendingResume ? 'replay' : 'play_arrow' }}</mat-icon>
+          {{ pendingResume ? 'Continuar examen' : 'Iniciar examen' }}
+        </button>
+      }
+    </mat-card>
+  } @else if (session) {
+    <div class="exam-header">
+      @if (maxAttempts > 1 && currentAttemptNumber) {
+        <div class="attempt-indicator">
+          Intento {{ currentAttemptNumber }} de {{ maxAttempts }}
+        </div>
+      }
+      <div class="timer-row">
+        <div class="timer" [class.warning]="remainingSeconds < 60">
+          <mat-icon>timer</mat-icon>
+          {{ formatTime(remainingSeconds) }}
+        </div>
+        @if (enforceQuestionTime && currentQuestion) {
+          <div
+            class="question-timer"
+            [class.warning]="questionRemainingSeconds <= 10"
+          >
+            <mat-icon>hourglass_top</mat-icon>
+            Pregunta: {{ formatTime(questionRemainingSeconds) }}
+          </div>
+        }
+      </div>
+      <mat-progress-bar mode="determinate" [value]="progress"></mat-progress-bar>
+      <span class="progress-text">
+        Pregunta {{ currentIndex + 1 }} de {{ session.questions.length }}
+        @if (enforceQuestionTime) {
+          · Avanza al responder o al agotar el tiempo
+        }
+      </span>
+    </div>
+
+    <div class="exam-layout">
+      <mat-card class="question-nav">
+        <h3>Navegación</h3>
+        <div class="nav-grid">
+          @for (q of session.questions; track q.id; let i = $index) {
+            <button
+              mat-mini-fab
+              type="button"
+              [class.nav-btn-current]="i === currentIndex"
+              [class.nav-btn-answered]="isAnswered(q.id) && i !== currentIndex"
+              [class.nav-btn-pending]="!isAnswered(q.id) && i !== currentIndex && !isQuestionLocked(q.id)"
+              [class.nav-btn-locked]="isQuestionLocked(q.id)"
+              [disabled]="enforceQuestionTime"
+              (click)="goToQuestion(i)"
+            >
+              {{ i + 1 }}
+            </button>
+          }
+        </div>
+      </mat-card>
+
+      <mat-card
+        class="question-card"
+        [class.question-card-answered]="currentQuestion && isAnswered(currentQuestion.id)"
+        [class.question-card-locked]="currentQuestion && isQuestionLocked(currentQuestion.id)"
+      >
+        @if (currentQuestion; as q) {
+          @if (q.topic_name) {
+            <span class="topic-badge">{{ q.topic_name }}</span>
+          }
+          @if (enforceQuestionTime) {
+            <p class="timed-mode-hint">
+              Responde y pulsa Siguiente para continuar, o espera a que se agote el tiempo.
+              No podrás volver a esta pregunta.
+            </p>
+          }
+          <div class="question-content no-copy">
+            <h2>{{ q.text }}</h2>
+
+            @if (q.image_url) {
+              <img
+                [src]="q.image_url"
+                alt="Imagen de la pregunta"
+                class="question-img"
+                draggable="false"
+              />
+            }
+
+            @if (q.question_type !== 'open') {
+              @if (q.question_type === 'multiple_choice') {
+                @for (opt of q.options; track opt.id) {
+                  <div
+                    class="option"
+                    [class.option-disabled]="isQuestionInputDisabled(q)"
+                    (click)="toggleOption(q, opt.id)"
+                  >
+                    <mat-checkbox
+                      [checked]="isSelected(q.id, opt.id)"
+                      [disabled]="isQuestionInputDisabled(q)"
+                    >
+                      {{ opt.text }}
+                    </mat-checkbox>
+                  </div>
+                }
+              } @else {
+                <mat-radio-group [ngModel]="answers[q.id]?.[0]" [disabled]="isQuestionInputDisabled(q)">
+                  @for (opt of q.options; track opt.id) {
+                    <mat-radio-button
+                      [value]="opt.id"
+                      (change)="toggleOption(q, opt.id)"
+                      [disabled]="isQuestionInputDisabled(q)"
+                      class="option"
+                      [class.option-disabled]="isQuestionInputDisabled(q)"
+                    >
+                      {{ opt.text }}
+                    </mat-radio-button>
+                  }
+                </mat-radio-group>
+              }
+            }
+          </div>
+
+          @if (q.question_type === 'open') {
+            <textarea
+              class="open-answer"
+              [(ngModel)]="openAnswers[q.id]"
+              [disabled]="isQuestionInputDisabled(q)"
+              placeholder="Escribe tu respuesta..."
+              rows="5"
+              autocomplete="off"
+              spellcheck="false"
+            ></textarea>
+          }
+
+          <div class="question-actions">
+            @if (!enforceQuestionTime) {
+              <button mat-stroked-button (click)="prevQuestion()" [disabled]="currentIndex === 0">
+                Anterior
+              </button>
+            }
+            @if (!enforceQuestionTime) {
+              @if (currentIndex < session.questions.length - 1) {
+                <button mat-flat-button color="primary" (click)="nextQuestion()">Siguiente</button>
+              } @else {
+                <button mat-flat-button color="accent" (click)="submitExam()" [disabled]="isSubmitting">
+                  {{ isSubmitting ? 'Enviando...' : 'Enviar examen' }}
+                </button>
+              }
+            } @else if (canAdvanceTimedQuestion) {
+              @if (currentIndex < session.questions.length - 1) {
+                <button mat-flat-button color="primary" (click)="nextQuestion()">Siguiente</button>
+              } @else {
+                <button mat-flat-button color="accent" (click)="nextQuestion()" [disabled]="isSubmitting">
+                  {{ isSubmitting ? 'Enviando...' : 'Enviar examen' }}
+                </button>
+              }
+            }
+          </div>
+        }
+      </mat-card>
+
+      <div class="camera-panel">
+        <video #examVideo autoplay playsinline muted class="video-small"></video>
+        <canvas #canvasElement hidden></canvas>
+        @if (requiresAttemptVideo && isRecordingVideo) {
+          <p class="recording-label">
+            <mat-icon>fiber_manual_record</mat-icon> Grabando video del intento
+          </p>
+        }
+        <p class="camera-label">Monitoreo activo</p>
+      </div>
+    </div>
+  }
+</div>

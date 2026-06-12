@@ -1,0 +1,61 @@
+.form-card {
+  margin-bottom: 1rem;
+  padding: 1rem;
+}
+
+.full-width {
+  width: 100%;
+}
+
+.table-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.empty {
+  padding: 1rem;
+  color: #666;
+}
+
+.badge {
+  display: inline-block;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  background: #e0e0e0;
+}
+
+.badge-sent,
+.badge-started,
+.badge-completed {
+  background: #e3f2fd;
+  color: #1565c0;
+}
+
+.badge-pending {
+  background: #fff3e0;
+  color: #ef6c00;
+}
+
+.attempt-not_started {
+  background: #f5f5f5;
+  color: #616161;
+}
+
+.attempt-in_progress {
+  background: #fff8e1;
+  color: #f57f17;
+}
+
+.attempt-submitted,
+.attempt-completed {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+.attempt-timed_out {
+  background: #ffebee;
+  color: #c62828;
+}

@@ -1,0 +1,86 @@
+.exam-item {
+  padding: 1rem;
+  border-bottom: 1px solid #eee;
+}
+
+.exam-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.exam-icon-actions {
+  display: flex;
+  gap: 0.25rem;
+  flex-shrink: 0;
+}
+
+.exam-meta {
+  font-size: 0.9rem;
+  color: #555;
+}
+
+.hint {
+  background: #fff8e1;
+  padding: 0.75rem;
+  border-radius: 4px;
+  margin-bottom: 1rem;
+  color: #f57f17;
+  font-size: 0.9rem;
+}
+
+.badge-attempts {
+  background: #fce4ec;
+  color: #c2185b;
+}
+
+.badge-timed {
+  background: #fff3e0;
+  color: #ef6c00;
+}
+
+.badge-video {
+  background: #e8eaf6;
+  color: #3949ab;
+}
+
+.form-card {
+  margin-bottom: 1rem;
+  padding: 1rem;
+}
+
+.full-width {
+  width: 100%;
+}
+
+.actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+  margin-top: 1rem;
+}
+
+.empty {
+  padding: 1rem;
+  color: #666;
+}
+
+.row {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.badge {
+  margin-left: 0.5rem;
+  font-size: 0.75rem;
+  background: #e3f2fd;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+}
+
+.exam-actions {
+  display: flex;
+  gap: 0.5rem;
+}

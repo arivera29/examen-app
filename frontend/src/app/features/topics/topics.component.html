@@ -1,0 +1,50 @@
+<h1>Temáticas</h1>
+
+<mat-card class="form-card">
+  @if (!showForm) {
+    <button mat-flat-button color="primary" (click)="openCreateForm()">Nueva temática</button>
+  } @else {
+    <h2>{{ isEditing ? 'Editar temática' : 'Nueva temática' }}</h2>
+    <form [formGroup]="form" (ngSubmit)="saveTopic()">
+      <mat-form-field appearance="outline" class="full-width">
+        <mat-label>Nombre</mat-label>
+        <input matInput formControlName="name" />
+      </mat-form-field>
+      <mat-form-field appearance="outline" class="full-width">
+        <mat-label>Descripción</mat-label>
+        <textarea matInput formControlName="description" rows="2"></textarea>
+      </mat-form-field>
+      <div class="actions">
+        <button mat-button type="button" (click)="cancelForm()">Cancelar</button>
+        <button mat-flat-button color="primary" type="submit">
+          {{ isEditing ? 'Guardar cambios' : 'Crear' }}
+        </button>
+      </div>
+    </form>
+  }
+</mat-card>
+
+<mat-card>
+  @for (topic of topics; track topic.id) {
+    <div class="topic-item">
+      <div class="topic-header">
+        <div>
+          <strong>{{ topic.name }}</strong>
+          @if (topic.description) {
+            <p>{{ topic.description }}</p>
+          }
+        </div>
+        <div class="topic-actions">
+          <button mat-icon-button color="primary" (click)="openEditForm(topic)" matTooltip="Editar">
+            <mat-icon>edit</mat-icon>
+          </button>
+          <button mat-icon-button color="warn" (click)="deleteTopic(topic)" matTooltip="Eliminar">
+            <mat-icon>delete</mat-icon>
+          </button>
+        </div>
+      </div>
+    </div>
+  } @empty {
+    <p class="empty">No hay temáticas. Crea una para clasificar tus preguntas.</p>
+  }
+</mat-card>

@@ -1,0 +1,84 @@
+<h2 mat-dialog-title>Respuestas del invitado</h2>
+
+<mat-dialog-content>
+  <p class="invitee">
+  @if (data.reportRow.invitee_full_name) {
+    <strong>{{ data.reportRow.invitee_full_name }}</strong><br />
+  }
+  {{ data.reportRow.invitee_email }}
+  </p>
+
+  @if (loading) {
+    <div class="loading">
+      <mat-spinner diameter="40"></mat-spinner>
+    </div>
+  } @else if (detail) {
+    <p class="summary">
+      Calificación: {{ detail.score ?? '-' }} / {{ detail.total_score }}
+    </p>
+
+    @if (detail.snapshots?.length) {
+      <section class="snapshots-section">
+        <h3>Registro fotográfico del intento</h3>
+        <div class="snapshots-grid">
+          @for (snapshot of detail.snapshots; track snapshot.id) {
+            <figure class="snapshot-card">
+              <img [src]="snapshot.image_url" [alt]="snapshotLabel(snapshot)" />
+              <figcaption>
+                {{ snapshotLabel(snapshot) }}
+                @if (snapshot.captured_at) {
+                  · {{ snapshot.captured_at | date:'short' }}
+                }
+              </figcaption>
+            </figure>
+          }
+        </div>
+      </section>
+    }
+
+    @if (detail.video_url) {
+      <section class="video-section">
+        <h3>Video del intento</h3>
+        <video class="attempt-video" controls playsinline preload="metadata">
+          <source [src]="detail.video_url" type="video/webm" />
+          <source [src]="detail.video_url" type="video/mp4" />
+        </video>
+      </section>
+    } @else if (detail.require_attempt_video) {
+      <section class="video-section video-missing">
+        <h3>Video del intento</h3>
+        <p class="video-missing-text">
+          Este examen requiere video, pero no se recibió el archivo para este intento
+          (posible fallo al subirlo al finalizar).
+        </p>
+      </section>
+    }
+
+    @for (answer of detail.answers; track answer.question_id) {
+      <div class="answer-item" [class]="resultClass(answer)">
+        <div class="answer-header">
+          <span class="question-number">Pregunta {{ answer.order }}</span>
+          <span class="result-badge">{{ resultLabel(answer) }}</span>
+        </div>
+        <p class="question-text">{{ answer.question_text }}</p>
+        <p class="answer-text">
+          <strong>Respuesta:</strong> {{ answerLabel(answer) }}
+        </p>
+        @if (answer.correct_options.length && answer.is_correct === false) {
+          <p class="correct-text">
+            <strong>Respuesta correcta:</strong> {{ answer.correct_options.join(', ') }}
+          </p>
+        }
+        <p class="points">
+          Puntos: {{ answer.points_earned | number:'1.0-2' }} / {{ answer.max_points | number:'1.0-2' }}
+        </p>
+      </div>
+    } @empty {
+      <p class="empty">No hay respuestas registradas para este intento.</p>
+    }
+  }
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-button mat-dialog-close>Cerrar</button>
+</mat-dialog-actions>

@@ -1,0 +1,138 @@
+<h1>Exámenes</h1>
+
+<mat-card class="form-card">
+  @if (!showForm) {
+    <button mat-flat-button color="primary" (click)="openCreateForm()">Nuevo examen</button>
+  } @else {
+    <h2>{{ isEditing ? 'Editar examen' : 'Nuevo examen' }}</h2>
+    @if (isRestrictedEdit) {
+      <p class="hint">
+        Este examen ya tiene intentos registrados. Solo puedes editar título y descripción.
+      </p>
+    }
+    <form [formGroup]="form" (ngSubmit)="saveExam()">
+      <mat-form-field appearance="outline" class="full-width">
+        <mat-label>Título</mat-label>
+        <input matInput formControlName="title" />
+      </mat-form-field>
+
+      <mat-form-field appearance="outline" class="full-width">
+        <mat-label>Descripción</mat-label>
+        <textarea matInput formControlName="description" rows="2"></textarea>
+      </mat-form-field>
+
+      <div class="row">
+        <mat-form-field appearance="outline">
+          <mat-label>Banco de preguntas</mat-label>
+          <mat-select formControlName="question_bank_id">
+            @for (bank of banks; track bank.id) {
+              <mat-option [value]="bank.id">{{ bank.name }}</mat-option>
+            }
+          </mat-select>
+        </mat-form-field>
+
+        <mat-form-field appearance="outline">
+          <mat-label>Modo</mat-label>
+          <mat-select formControlName="mode">
+            <mat-option value="simulation">Simulacro</mat-option>
+            <mat-option value="real">Prueba real</mat-option>
+          </mat-select>
+        </mat-form-field>
+      </div>
+
+      <div class="row">
+        <mat-form-field appearance="outline">
+          <mat-label>Cantidad de preguntas</mat-label>
+          <input matInput type="number" formControlName="question_count" />
+        </mat-form-field>
+        <mat-form-field appearance="outline">
+          <mat-label>Calificación total</mat-label>
+          <input matInput type="number" formControlName="total_score" />
+        </mat-form-field>
+        <mat-form-field appearance="outline">
+          <mat-label>Cierre de la prueba</mat-label>
+          <input matInput type="datetime-local" formControlName="closes_at" />
+        </mat-form-field>
+      </div>
+
+      <div class="row">
+        <mat-form-field appearance="outline">
+          <mat-label>Número de intentos</mat-label>
+          <input matInput type="number" formControlName="max_attempts" min="1" />
+        </mat-form-field>
+        <mat-form-field appearance="outline">
+          <mat-label>Política de intentos</mat-label>
+          <mat-select formControlName="attempt_policy">
+            <mat-option value="flexible">Libre (en cualquier momento antes del cierre)</mat-option>
+            <mat-option value="sequential">Secuencial (enviar cada intento antes del siguiente)</mat-option>
+          </mat-select>
+        </mat-form-field>
+      </div>
+
+      <mat-checkbox formControlName="random_selection">Selección aleatoria de preguntas</mat-checkbox>
+      <mat-checkbox formControlName="enforce_question_time">
+        Controlar tiempo por pregunta (sin volver atrás ni cambiar respuestas)
+      </mat-checkbox>
+      <mat-checkbox formControlName="require_attempt_video">
+        Grabar video del intento (se envía al finalizar el examen)
+      </mat-checkbox>
+
+      <div class="actions">
+        <button mat-button type="button" (click)="cancelForm()">Cancelar</button>
+        <button mat-flat-button color="primary" type="submit">
+          {{ isEditing ? 'Guardar cambios' : 'Crear examen' }}
+        </button>
+      </div>
+    </form>
+  }
+</mat-card>
+
+<mat-card>
+  @for (exam of exams; track exam.id) {
+    <div class="exam-item">
+      <div class="exam-header-row">
+        <div>
+          <strong>{{ exam.title }}</strong>
+          <span class="badge">{{ exam.mode === 'simulation' ? 'Simulacro' : 'Prueba real' }}</span>
+          @if (exam.enforce_question_time) {
+            <span class="badge badge-timed">Tiempo por pregunta</span>
+          }
+          @if (exam.require_attempt_video) {
+            <span class="badge badge-video">Video del intento</span>
+          }
+          @if (exam.max_attempts > 1) {
+            <span class="badge badge-attempts-config">{{ exam.max_attempts }} intentos</span>
+          }
+          @if (exam.has_attempts) {
+            <span class="badge badge-attempts">Con intentos</span>
+          }
+        </div>
+        <div class="exam-icon-actions">
+          <button mat-icon-button color="primary" (click)="openEditForm(exam)" matTooltip="Editar">
+            <mat-icon>edit</mat-icon>
+          </button>
+          <button
+            mat-icon-button
+            color="warn"
+            (click)="deleteExam(exam)"
+            [disabled]="!canDelete(exam)"
+            matTooltip="Eliminar"
+          >
+            <mat-icon>delete</mat-icon>
+          </button>
+        </div>
+      </div>
+      <p>{{ exam.description || 'Sin descripción' }}</p>
+      <p class="exam-meta">
+        {{ exam.question_count }} preguntas · {{ exam.total_score }} pts ·
+        cierra {{ formatClosesAt(exam.closes_at) }}
+      </p>
+      <div class="exam-actions">
+        <a mat-button [routerLink]="['/dashboard/exams', exam.id, 'invite']">Invitaciones</a>
+        <a mat-button [routerLink]="['/dashboard/exams', exam.id, 'report']">Informe</a>
+      </div>
+    </div>
+  } @empty {
+    <p class="empty">No hay exámenes creados.</p>
+  }
+</mat-card>

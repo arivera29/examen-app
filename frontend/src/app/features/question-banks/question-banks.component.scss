@@ -1,0 +1,66 @@
+.form-card {
+  margin-bottom: 1rem;
+  padding: 1rem;
+}
+
+.full-width {
+  width: 100%;
+}
+
+.actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
+.bank-item {
+  padding: 1rem;
+  border-bottom: 1px solid #eee;
+
+  &:last-child {
+    border-bottom: none;
+  }
+
+  p {
+    margin: 0.25rem 0 0;
+    color: #666;
+  }
+}
+
+.bank-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.bank-icon-actions {
+  display: flex;
+  gap: 0.25rem;
+  flex-shrink: 0;
+}
+
+.badge {
+  display: inline-block;
+  margin-left: 0.5rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  background: #e3f2fd;
+  color: #1565c0;
+}
+
+.badge-exams {
+  background: #fff3e0;
+  color: #e65100;
+}
+
+.badge-count {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+.empty {
+  padding: 1rem;
+  color: #666;
+}

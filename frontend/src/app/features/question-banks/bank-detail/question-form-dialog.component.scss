@@ -1,0 +1,48 @@
+.full-width {
+  width: 100%;
+}
+
+.row {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.options-section {
+  margin: 1rem 0;
+
+  h3 {
+    margin: 0 0 0.75rem;
+    font-size: 1rem;
+    font-weight: 500;
+  }
+}
+
+.option-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.flex-grow {
+  flex: 1;
+}
+
+.image-upload {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.image-upload-label {
+  font-size: 0.875rem;
+  color: rgba(0, 0, 0, 0.6);
+}
+
+mat-dialog-content {
+  min-width: min(680px, 90vw);
+  max-height: 70vh;
+  padding-top: 0.5rem;
+}

@@ -1,0 +1,129 @@
+<a mat-button routerLink="/dashboard/exams">← Volver</a>
+
+@if (report) {
+  <div class="report-header">
+    <h1>Informe: {{ report.exam_title }}</h1>
+    <button
+      mat-flat-button
+      color="primary"
+      type="button"
+      (click)="exportReport()"
+      [disabled]="exportingReport"
+    >
+      <mat-icon>download</mat-icon>
+      {{ exportingReport ? 'Exportando...' : 'Exportar Excel' }}
+    </button>
+  </div>
+
+  <div class="summary-cards">
+    <mat-card>
+      <mat-card-content>
+        <div class="stat">{{ report.summary.total_invitees }}</div>
+        <div class="label">Invitados</div>
+      </mat-card-content>
+    </mat-card>
+    <mat-card>
+      <mat-card-content>
+        <div class="stat">{{ report.summary.completed }}</div>
+        <div class="label">Completados</div>
+      </mat-card-content>
+    </mat-card>
+    <mat-card>
+      <mat-card-content>
+        <div class="stat">{{ report.summary.average_score | number:'1.1-1' }}</div>
+        <div class="label">Promedio</div>
+      </mat-card-content>
+    </mat-card>
+    <mat-card>
+      <mat-card-content>
+        <div class="stat">{{ report.summary.highest_score | number:'1.1-1' }}</div>
+        <div class="label">Máximo</div>
+      </mat-card-content>
+    </mat-card>
+    <mat-card class="stat-correct">
+      <mat-card-content>
+        <div class="stat">{{ report.summary.average_correct_answers | number:'1.1-1' }}</div>
+        <div class="label">Prom. acertadas</div>
+      </mat-card-content>
+    </mat-card>
+    <mat-card class="stat-incorrect">
+      <mat-card-content>
+        <div class="stat">{{ report.summary.average_incorrect_answers | number:'1.1-1' }}</div>
+        <div class="label">Prom. no acertadas</div>
+      </mat-card-content>
+    </mat-card>
+  </div>
+
+  <mat-card>
+    <h2>Calificaciones individuales</h2>
+    <table mat-table [dataSource]="report.individual_reports" class="full-width">
+      <ng-container matColumnDef="name">
+        <th mat-header-cell *matHeaderCellDef>Nombre</th>
+        <td mat-cell *matCellDef="let row">{{ row.invitee_full_name || '-' }}</td>
+      </ng-container>
+      <ng-container matColumnDef="attempt">
+        <th mat-header-cell *matHeaderCellDef>Intento final</th>
+        <td mat-cell *matCellDef="let row">
+          {{ row.attempt_number }}
+          @if (row.attempts_used) {
+            <span class="attempts-used">({{ row.attempts_used }} realizados)</span>
+          }
+        </td>
+      </ng-container>
+      <ng-container matColumnDef="email">
+        <th mat-header-cell *matHeaderCellDef>Correo</th>
+        <td mat-cell *matCellDef="let row">{{ row.invitee_email }}</td>
+      </ng-container>
+      <ng-container matColumnDef="score">
+        <th mat-header-cell *matHeaderCellDef>Calificación</th>
+        <td mat-cell *matCellDef="let row">{{ row.score ?? '-' }} / {{ row.total_score }}</td>
+      </ng-container>
+      <ng-container matColumnDef="correct">
+        <th mat-header-cell *matHeaderCellDef>Acertadas</th>
+        <td mat-cell *matCellDef="let row" class="correct-cell">{{ row.correct_answers_count ?? 0 }}</td>
+      </ng-container>
+      <ng-container matColumnDef="incorrect">
+        <th mat-header-cell *matHeaderCellDef>No acertadas</th>
+        <td mat-cell *matCellDef="let row" class="incorrect-cell">{{ row.incorrect_answers_count ?? 0 }}</td>
+      </ng-container>
+      <ng-container matColumnDef="percentage">
+        <th mat-header-cell *matHeaderCellDef>%</th>
+        <td mat-cell *matCellDef="let row">{{ row.percentage | number:'1.0-0' }}%</td>
+      </ng-container>
+      <ng-container matColumnDef="status">
+        <th mat-header-cell *matHeaderCellDef>Estado</th>
+        <td mat-cell *matCellDef="let row">{{ row.status }}</td>
+      </ng-container>
+      <ng-container matColumnDef="fraud_score">
+        <th mat-header-cell *matHeaderCellDef>Fraude</th>
+        <td mat-cell *matCellDef="let row" [class.high-fraud]="row.fraud_score > 0.5">
+          {{ (row.fraud_score * 100) | number:'1.0-0' }}%
+        </td>
+      </ng-container>
+      <ng-container matColumnDef="actions">
+        <th mat-header-cell *matHeaderCellDef>Acciones</th>
+        <td mat-cell *matCellDef="let row" class="actions-cell">
+          <button
+            mat-icon-button
+            color="primary"
+            (click)="viewAnswers(row)"
+            matTooltip="Ver respuestas por pregunta"
+          >
+            <mat-icon>visibility</mat-icon>
+          </button>
+          <button
+            mat-icon-button
+            color="warn"
+            (click)="confirmDeleteResults(row)"
+            [disabled]="deletingEmail === row.invitee_email"
+            matTooltip="Eliminar todos los intentos del invitado"
+          >
+            <mat-icon>delete</mat-icon>
+          </button>
+        </td>
+      </ng-container>
+      <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
+      <tr mat-row *matRowDef="let row; columns: displayedColumns"></tr>
+    </table>
+  </mat-card>
+}

@@ -1,0 +1,45 @@
+.form-card {
+  margin-bottom: 1rem;
+  padding: 1rem;
+}
+
+.full-width {
+  width: 100%;
+}
+
+.actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
+.topic-item {
+  padding: 1rem;
+  border-bottom: 1px solid #eee;
+
+  &:last-child {
+    border-bottom: none;
+  }
+}
+
+.topic-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+
+  p {
+    margin: 0.25rem 0 0;
+    color: #666;
+  }
+}
+
+.topic-actions {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.empty {
+  padding: 1rem;
+  color: #666;
+}

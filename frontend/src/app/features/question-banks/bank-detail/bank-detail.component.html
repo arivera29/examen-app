@@ -1,0 +1,97 @@
+<a mat-button routerLink="/dashboard/banks">← Volver</a>
+<h1>Preguntas del banco</h1>
+
+<mat-card class="stats-card">
+  <div class="stats-content">
+    <mat-icon class="stats-icon">quiz</mat-icon>
+    <div>
+      <div class="stats-value">{{ totalQuestions }}</div>
+      <div class="stats-label">preguntas registradas</div>
+    </div>
+  </div>
+</mat-card>
+
+<mat-card class="backup-card">
+  <div class="backup-actions">
+    <button mat-stroked-button type="button" (click)="downloadBackup()">
+      <mat-icon>download</mat-icon>
+      Descargar backup
+    </button>
+    <input
+      #restoreInput
+      type="file"
+      accept="application/json,.json"
+      hidden
+      (change)="onRestoreFileSelected($event)"
+    />
+    <button mat-stroked-button type="button" (click)="restoreInput.click()">
+      <mat-icon>upload</mat-icon>
+      Restaurar backup
+    </button>
+  </div>
+  <p class="backup-hint">
+    Exporta o importa preguntas en JSON. Las imágenes no se incluyen en el backup.
+  </p>
+</mat-card>
+
+<mat-card class="actions-card">
+  <button mat-flat-button color="primary" (click)="openCreateForm()">Nueva pregunta</button>
+</mat-card>
+
+<mat-card>
+  @for (q of questions; track q.id) {
+    <div class="question-item">
+      <div class="question-header-row">
+        <div>
+          <strong>{{ q.text }}</strong>
+          <span class="badge">
+            @if (q.topic_name) {
+              {{ q.topic_name }} ·
+            }
+            {{ q.question_type }} · {{ q.time_seconds }}s
+          </span>
+          @if (q.used_in_exam) {
+            <span class="badge badge-exam">En examen</span>
+          }
+        </div>
+        <div class="question-icon-actions">
+          <button mat-icon-button color="primary" (click)="openEditForm(q)" matTooltip="Editar">
+            <mat-icon>edit</mat-icon>
+          </button>
+          <button
+            mat-icon-button
+            color="warn"
+            (click)="deleteQuestion(q)"
+            [disabled]="!canDelete(q)"
+            matTooltip="Eliminar"
+          >
+            <mat-icon>delete</mat-icon>
+          </button>
+        </div>
+      </div>
+      @if (q.image_url) {
+        <img [src]="q.image_url" alt="Imagen pregunta" class="question-image" />
+      }
+      @if (q.options.length) {
+        <ul>
+          @for (opt of q.options; track opt.id) {
+            <li [class.correct]="opt.is_correct">{{ opt.text }}</li>
+          }
+        </ul>
+      }
+    </div>
+  } @empty {
+    <p class="empty">No hay preguntas en este banco.</p>
+  }
+  @if (totalQuestions > 0) {
+    <mat-paginator
+      [length]="totalQuestions"
+      [pageIndex]="pageIndex"
+      [pageSize]="pageSize"
+      [pageSizeOptions]="pageSizeOptions"
+      showFirstLastButtons
+      aria-label="Paginación de preguntas"
+      (page)="onPageChange($event)"
+    />
+  }
+</mat-card>

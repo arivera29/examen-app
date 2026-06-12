@@ -1,0 +1,105 @@
+<a mat-button routerLink="/dashboard/exams">← Volver</a>
+<h1>Invitaciones del examen</h1>
+
+<mat-card class="form-card">
+  <h2>Nueva invitación</h2>
+  <form [formGroup]="form" (ngSubmit)="sendInvites()">
+    <mat-form-field appearance="outline" class="full-width">
+      <mat-label>Correos (separados por coma)</mat-label>
+      <textarea
+        matInput
+        formControlName="emails"
+        rows="3"
+        placeholder="user1@email.com, user2@email.com"
+      ></textarea>
+    </mat-form-field>
+    <button mat-flat-button color="primary" type="submit" [disabled]="form.invalid">
+      Enviar invitaciones
+    </button>
+  </form>
+</mat-card>
+
+<mat-card>
+  <div class="table-header">
+    <h2>Registro de invitaciones</h2>
+    <button mat-stroked-button (click)="loadInvitations()">
+      <mat-icon>refresh</mat-icon> Actualizar
+    </button>
+  </div>
+
+  @if (loading) {
+    <p class="empty">Cargando invitaciones...</p>
+  } @else if (invitations.length) {
+    <table mat-table [dataSource]="invitations" class="full-width">
+      <ng-container matColumnDef="email">
+        <th mat-header-cell *matHeaderCellDef>Correo</th>
+        <td mat-cell *matCellDef="let row">{{ row.invitee_email }}</td>
+      </ng-container>
+
+      <ng-container matColumnDef="status">
+        <th mat-header-cell *matHeaderCellDef>Estado invitación</th>
+        <td mat-cell *matCellDef="let row">
+          <span class="badge" [class]="'badge-' + row.status">{{ statusLabel(row.status) }}</span>
+        </td>
+      </ng-container>
+
+      <ng-container matColumnDef="attempt">
+        <th mat-header-cell *matHeaderCellDef>Estado examen</th>
+        <td mat-cell *matCellDef="let row">
+          <span class="badge" [class]="'attempt-' + row.attempt_status">
+            {{ attemptLabel(row.attempt_status) }}
+          </span>
+        </td>
+      </ng-container>
+
+      <ng-container matColumnDef="attempts_count">
+        <th mat-header-cell *matHeaderCellDef>Intentos</th>
+        <td mat-cell *matCellDef="let row">
+          {{ row.attempts_completed ?? 0 }} / {{ row.attempts_total ?? 1 }}
+        </td>
+      </ng-container>
+
+      <ng-container matColumnDef="sent_at">
+        <th mat-header-cell *matHeaderCellDef>Enviado</th>
+        <td mat-cell *matCellDef="let row">{{ formatDate(row.sent_at) }}</td>
+      </ng-container>
+
+      <ng-container matColumnDef="link">
+        <th mat-header-cell *matHeaderCellDef>Enlace</th>
+        <td mat-cell *matCellDef="let row">
+          <button mat-icon-button (click)="copyLink(row.invite_link)" matTooltip="Copiar enlace">
+            <mat-icon>link</mat-icon>
+          </button>
+        </td>
+      </ng-container>
+
+      <ng-container matColumnDef="actions">
+        <th mat-header-cell *matHeaderCellDef>Acciones</th>
+        <td mat-cell *matCellDef="let row">
+          <button
+            mat-icon-button
+            color="primary"
+            (click)="resendInvitation(row)"
+            matTooltip="Reenviar enlace"
+          >
+            <mat-icon>send</mat-icon>
+          </button>
+          <button
+            mat-icon-button
+            color="warn"
+            (click)="deleteInvitation(row)"
+            [disabled]="!canDelete(row)"
+            matTooltip="Eliminar invitación"
+          >
+            <mat-icon>delete</mat-icon>
+          </button>
+        </td>
+      </ng-container>
+
+      <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
+      <tr mat-row *matRowDef="let row; columns: displayedColumns"></tr>
+    </table>
+  } @else {
+    <p class="empty">No hay invitaciones registradas para este examen.</p>
+  }
+</mat-card>

@@ -1,0 +1,145 @@
+.invitee {
+  margin: 0 0 0.5rem;
+  color: #666;
+}
+
+.summary {
+  margin: 0 0 1rem;
+  font-weight: 500;
+}
+
+.snapshots-section {
+  margin-bottom: 1.5rem;
+
+  h3 {
+    margin: 0 0 0.75rem;
+    font-size: 1rem;
+  }
+}
+
+.snapshots-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 0.75rem;
+}
+
+.snapshot-card {
+  margin: 0;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #fff;
+
+  img {
+    display: block;
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    object-fit: cover;
+    background: #000;
+  }
+
+  figcaption {
+    padding: 0.4rem 0.5rem;
+    font-size: 0.72rem;
+    color: #555;
+    line-height: 1.3;
+  }
+}
+
+.video-section {
+  margin-bottom: 1.5rem;
+
+  h3 {
+    margin: 0 0 0.75rem;
+    font-size: 1rem;
+  }
+}
+
+.attempt-video {
+  width: 100%;
+  max-height: 360px;
+  border-radius: 8px;
+  background: #000;
+}
+
+.video-missing {
+  padding: 0.75rem;
+  border: 1px dashed #ef6c00;
+  border-radius: 8px;
+  background: #fff8e1;
+}
+
+.video-missing-text {
+  margin: 0;
+  color: #e65100;
+  font-size: 0.9rem;
+}
+
+.loading {
+  display: flex;
+  justify-content: center;
+  padding: 2rem;
+}
+
+.answer-item {
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 0.75rem;
+  background: #fafafa;
+
+  &.result-correct {
+    border-left: 4px solid #43a047;
+    background: #f1f8e9;
+  }
+
+  &.result-incorrect {
+    border-left: 4px solid #e53935;
+    background: #ffebee;
+  }
+
+  &.result-pending {
+    border-left: 4px solid #fb8c00;
+    background: #fff8e1;
+  }
+}
+
+.answer-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.question-number {
+  font-weight: 600;
+}
+
+.result-badge {
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.question-text {
+  margin: 0 0 0.75rem;
+}
+
+.answer-text,
+.correct-text,
+.points {
+  margin: 0.25rem 0;
+}
+
+.correct-text {
+  color: #2e7d32;
+}
+
+.empty {
+  color: #666;
+}
+
+mat-dialog-content {
+  min-width: min(720px, 90vw);
+  max-height: 70vh;
+}

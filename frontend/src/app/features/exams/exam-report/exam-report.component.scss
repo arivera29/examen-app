@@ -1,0 +1,61 @@
+.summary-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 1rem;
+  margin: 1rem 0;
+}
+
+.report-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.5rem;
+}
+
+.report-header h1 {
+  margin: 0;
+}
+
+.stat {
+  font-size: 2rem;
+  font-weight: 600;
+  color: #3f51b5;
+}
+
+.stat-correct .stat {
+  color: #2e7d32;
+}
+
+.stat-incorrect .stat {
+  color: #c62828;
+}
+
+.label {
+  color: #666;
+  font-size: 0.85rem;
+}
+
+.full-width {
+  width: 100%;
+}
+
+.high-fraud {
+  color: #c62828;
+  font-weight: 600;
+}
+
+.correct-cell {
+  color: #2e7d32;
+  font-weight: 600;
+}
+
+.incorrect-cell {
+  color: #c62828;
+  font-weight: 600;
+}
+
+.actions-cell {
+  white-space: nowrap;
+}

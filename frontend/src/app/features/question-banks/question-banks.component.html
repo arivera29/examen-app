@@ -1,0 +1,59 @@
+<h1>Bancos de preguntas</h1>
+
+<mat-card class="form-card">
+  @if (!showForm) {
+    <button mat-flat-button color="primary" (click)="openCreateForm()">Nuevo banco</button>
+  } @else {
+    <h2>{{ isEditing ? 'Editar banco' : 'Nuevo banco' }}</h2>
+    <form [formGroup]="form" (ngSubmit)="saveBank()">
+      <mat-form-field appearance="outline" class="full-width">
+        <mat-label>Nombre</mat-label>
+        <input matInput formControlName="name" />
+      </mat-form-field>
+      <mat-form-field appearance="outline" class="full-width">
+        <mat-label>Descripción</mat-label>
+        <textarea matInput formControlName="description" rows="2"></textarea>
+      </mat-form-field>
+      <div class="actions">
+        <button mat-button type="button" (click)="cancelForm()">Cancelar</button>
+        <button mat-flat-button color="primary" type="submit">
+          {{ isEditing ? 'Guardar cambios' : 'Crear' }}
+        </button>
+      </div>
+    </form>
+  }
+</mat-card>
+
+<mat-card>
+  @for (bank of banks; track bank.id) {
+    <div class="bank-item">
+      <div class="bank-header-row">
+        <div>
+          <strong>{{ bank.name }}</strong>
+          @if (bank.has_exams) {
+            <span class="badge badge-exams">En uso</span>
+          }
+          <span class="badge badge-count">{{ bank.question_count ?? 0 }} preguntas</span>
+          <p>{{ bank.description || 'Sin descripción' }}</p>
+        </div>
+        <div class="bank-icon-actions">
+          <button mat-icon-button color="primary" (click)="openEditForm(bank)" matTooltip="Editar">
+            <mat-icon>edit</mat-icon>
+          </button>
+          <button
+            mat-icon-button
+            color="warn"
+            (click)="deleteBank(bank)"
+            [disabled]="!canDelete(bank)"
+            matTooltip="Eliminar"
+          >
+            <mat-icon>delete</mat-icon>
+          </button>
+        </div>
+      </div>
+      <a mat-button [routerLink]="['/dashboard/banks', bank.id]">Ver preguntas</a>
+    </div>
+  } @empty {
+    <p class="empty">No hay bancos de preguntas. Crea uno para comenzar.</p>
+  }
+</mat-card>

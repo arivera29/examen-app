@@ -1,0 +1,36 @@
+.layout {
+  height: 100vh;
+}
+
+.sidenav {
+  width: 260px;
+  background: #fafafa;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1.25rem 1rem;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #3f51b5;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.content {
+  padding: 1.5rem;
+  max-width: 1200px;
+}
+
+.user-name {
+  margin-right: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.active {
+  background: rgba(63, 81, 181, 0.08);
+}
