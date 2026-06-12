@@ -11,6 +11,7 @@ from app.application.use_cases import (
     DeleteExamUseCase,
     DeleteQuestionBankUseCase,
     DeleteQuestionUseCase,
+    DuplicateQuestionUseCase,
     TerminateExamForTabSwitchUseCase,
     FinishExamEarlyUseCase,
     GetAttemptAnswersReportUseCase,
@@ -269,6 +270,75 @@ class TestDeleteQuestionUseCase:
         use_case = DeleteQuestionUseCase(bank_repo, question_repo, exam_repo)
         with pytest.raises(ValidationError, match="exámenes"):
             use_case.execute(owner_id, bank_id, question_id)
+
+
+class TestDuplicateQuestionUseCase:
+    def test_duplicates_question_with_options_and_image(self):
+        owner_id = uuid4()
+        bank_id = uuid4()
+        question_id = uuid4()
+        bank = QuestionBank(name="Bank", description="", owner_id=owner_id, id=bank_id)
+        source = Question(
+            id=question_id,
+            text="Pregunta original",
+            question_type=QuestionType.SINGLE_CHOICE,
+            time_seconds=90,
+            owner_id=owner_id,
+            image_url="/uploads/original.jpg",
+            options=[
+                QuestionOption(text="A", is_correct=True, order=0),
+                QuestionOption(text="B", is_correct=False, order=1),
+            ],
+        )
+        duplicated = Question(
+            text="Pregunta original (copia)",
+            question_type=QuestionType.SINGLE_CHOICE,
+            time_seconds=90,
+            owner_id=owner_id,
+            image_url="/uploads/copy.jpg",
+            options=[
+                QuestionOption(text="A", is_correct=True, order=0),
+                QuestionOption(text="B", is_correct=False, order=1),
+            ],
+        )
+
+        bank_repo = MagicMock()
+        bank_repo.get_by_id.return_value = bank
+        question_repo = MagicMock()
+        question_repo.get_by_id_in_bank.return_value = source
+        question_repo.create_in_bank.return_value = duplicated
+
+        use_case = DuplicateQuestionUseCase(bank_repo, question_repo, "/tmp/uploads")
+
+        with pytest.MonkeyPatch.context() as mp:
+            copy_mock = MagicMock(return_value="/uploads/copy.jpg")
+            mp.setattr(
+                "app.infrastructure.services.upload_cleanup.copy_uploaded_file",
+                copy_mock,
+            )
+            result = use_case.execute(owner_id, bank_id, question_id)
+
+        assert result.text == "Pregunta original (copia)"
+        copy_mock.assert_called_once_with("/tmp/uploads", "/uploads/original.jpg")
+        question_repo.create_in_bank.assert_called_once()
+        created = question_repo.create_in_bank.call_args[0][1]
+        assert created.text == "Pregunta original (copia)"
+        assert len(created.options) == 2
+        assert created.options[0].text == "A"
+        assert created.options[0].is_correct is True
+
+    def test_not_found_when_question_missing(self):
+        owner_id = uuid4()
+        bank_id = uuid4()
+        bank = QuestionBank(name="Bank", description="", owner_id=owner_id, id=bank_id)
+        bank_repo = MagicMock()
+        bank_repo.get_by_id.return_value = bank
+        question_repo = MagicMock()
+        question_repo.get_by_id_in_bank.return_value = None
+
+        use_case = DuplicateQuestionUseCase(bank_repo, question_repo, "/tmp/uploads")
+        with pytest.raises(NotFoundError, match="Question not found"):
+            use_case.execute(owner_id, bank_id, uuid4())
 
 
 class TestCreateExamUseCase:
@@ -765,14 +835,16 @@ class TestDeleteExamUseCase:
         exam_repo.delete.return_value = True
         attempt_repo = MagicMock()
         attempt_repo.list_by_exam.return_value = []
+        snapshot_repo = MagicMock()
 
-        use_case = DeleteExamUseCase(exam_repo, attempt_repo)
+        use_case = DeleteExamUseCase(exam_repo, attempt_repo, snapshot_repo, "/tmp/uploads")
         use_case.execute(owner_id, exam_id)
         exam_repo.delete.assert_called_once_with(exam_id)
 
-    def test_blocks_delete_with_completed_attempts(self):
+    def test_deletes_exam_with_attempts_and_cleans_files(self):
         exam_id = uuid4()
         owner_id = uuid4()
+        attempt_id = uuid4()
         exam = Exam(
             title="Exam",
             description="",
@@ -785,16 +857,39 @@ class TestDeleteExamUseCase:
             random_selection=True,
             id=exam_id,
         )
+        attempt = ExamAttempt(
+            id=attempt_id,
+            invitation_id=uuid4(),
+            exam_id=exam_id,
+            status=AttemptStatus.SUBMITTED,
+            attempt_video_url="/uploads/videos/test.webm",
+        )
+        snapshot = AttemptSnapshot(
+            attempt_id=attempt_id,
+            snapshot_type=SnapshotType.START,
+            image_url="/uploads/start.jpg",
+        )
+
         exam_repo = MagicMock()
         exam_repo.get_by_id.return_value = exam
+        exam_repo.delete.return_value = True
         attempt_repo = MagicMock()
-        attempt_repo.list_by_exam.return_value = [
-            ExamAttempt(id=uuid4(), invitation_id=uuid4(), exam_id=exam_id, status=AttemptStatus.SUBMITTED)
-        ]
+        attempt_repo.list_by_exam.return_value = [attempt]
+        snapshot_repo = MagicMock()
+        snapshot_repo.list_by_attempt.return_value = [snapshot]
 
-        use_case = DeleteExamUseCase(exam_repo, attempt_repo)
-        with pytest.raises(ValidationError, match="No se puede eliminar"):
+        use_case = DeleteExamUseCase(exam_repo, attempt_repo, snapshot_repo, "/tmp/uploads")
+
+        with pytest.MonkeyPatch.context() as mp:
+            delete_mock = MagicMock()
+            mp.setattr(
+                "app.infrastructure.services.upload_cleanup.delete_uploaded_file",
+                delete_mock,
+            )
             use_case.execute(owner_id, exam_id)
+
+        assert delete_mock.call_count == 2
+        exam_repo.delete.assert_called_once_with(exam_id)
 
 
 class TestDeleteExamInvitationUseCase:
@@ -926,7 +1021,7 @@ class TestDeleteInviteeExamResultsUseCase:
         with pytest.MonkeyPatch.context() as mp:
             delete_mock = MagicMock()
             mp.setattr(
-                "app.infrastructure.services.proctoring_service.delete_uploaded_file",
+                "app.infrastructure.services.upload_cleanup.delete_uploaded_file",
                 delete_mock,
             )
             result = use_case.execute(owner_id, exam_id, "student@test.com")

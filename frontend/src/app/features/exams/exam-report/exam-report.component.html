@@ -3,16 +3,27 @@
 @if (report) {
   <div class="report-header">
     <h1>Informe: {{ report.exam_title }}</h1>
-    <button
-      mat-flat-button
-      color="primary"
-      type="button"
-      (click)="exportReport()"
-      [disabled]="exportingReport"
-    >
-      <mat-icon>download</mat-icon>
-      {{ exportingReport ? 'Exportando...' : 'Exportar Excel' }}
-    </button>
+    <div class="report-actions">
+      <button
+        mat-stroked-button
+        type="button"
+        (click)="exportAllAnswers()"
+        [disabled]="exportingAnswers"
+      >
+        <mat-icon>assignment</mat-icon>
+        {{ exportingAnswers ? 'Exportando...' : 'Exportar respuestas' }}
+      </button>
+      <button
+        mat-flat-button
+        color="primary"
+        type="button"
+        (click)="exportReport()"
+        [disabled]="exportingReport"
+      >
+        <mat-icon>download</mat-icon>
+        {{ exportingReport ? 'Exportando...' : 'Exportar informe' }}
+      </button>
+    </div>
   </div>
 
   <div class="summary-cards">
@@ -103,6 +114,14 @@
       <ng-container matColumnDef="actions">
         <th mat-header-cell *matHeaderCellDef>Acciones</th>
         <td mat-cell *matCellDef="let row" class="actions-cell">
+          <button
+            mat-icon-button
+            (click)="exportInviteeAnswers(row)"
+            [disabled]="exportingInviteeEmail === row.invitee_email"
+            matTooltip="Descargar respuestas en Excel"
+          >
+            <mat-icon>download</mat-icon>
+          </button>
           <button
             mat-icon-button
             color="primary"

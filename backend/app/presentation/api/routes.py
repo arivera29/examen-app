@@ -14,6 +14,11 @@ from app.application.attempt_access import (
     has_exhausted_attempts,
     is_finished_attempt,
 )
+from app.application.attempt_decision import (
+    compute_decision_seconds_remaining,
+    get_last_finished_attempt,
+    pending_attempt_decision,
+)
 from app.application.exam_session import (
     build_exam_session_payload,
     get_attempt_question_ids_ordered,
@@ -30,11 +35,14 @@ from app.application.use_cases import (
     DeleteExamUseCase,
     DeleteQuestionBankUseCase,
     DeleteQuestionUseCase,
+    DuplicateQuestionUseCase,
     DeleteTopicUseCase,
     DomainError,
     EnableMfaUseCase,
     ExportExamReportUseCase,
+    ExportExamAttemptsAnswersUseCase,
     ExportQuestionBankBackupUseCase,
+    ExportQuestionBankExcelUseCase,
     TerminateExamForTabSwitchUseCase,
     FinishExamEarlyUseCase,
     GetAttemptAnswersReportUseCase,
@@ -375,6 +383,7 @@ def list_questions(
     bank_id: UUID,
     page: int = Query(1, ge=1),
     page_size: int = Query(10, ge=1, le=100),
+    search: str | None = Query(None, max_length=200),
     user_id: UUID = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
@@ -384,12 +393,16 @@ def list_questions(
 
     question_repo = SQLAlchemyQuestionRepository(db)
     exam_repo = SQLAlchemyExamRepository(db)
-    total = question_repo.count_by_bank(bank_id)
+    normalized_search = search.strip() if search else None
+    if normalized_search == "":
+        normalized_search = None
+
+    total = question_repo.count_by_bank(bank_id, normalized_search)
     total_pages = max(1, (total + page_size - 1) // page_size) if total else 0
     if total > 0 and page > total_pages:
         page = total_pages
 
-    questions = question_repo.list_by_bank_paginated(bank_id, page, page_size)
+    questions = question_repo.list_by_bank_paginated(bank_id, page, page_size, normalized_search)
     return PaginatedQuestionsResponse(
         items=[_question_to_response(q, exam_repo) for q in questions],
         total=total,
@@ -463,6 +476,29 @@ def delete_question(
         _handle_domain_error(e)
 
 
+@router.post(
+    "/question-banks/{bank_id}/questions/{question_id}/duplicate",
+    response_model=QuestionResponse,
+    status_code=201,
+)
+def duplicate_question(
+    bank_id: UUID,
+    question_id: UUID,
+    user_id: UUID = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    use_case = DuplicateQuestionUseCase(
+        SQLAlchemyQuestionBankRepository(db),
+        SQLAlchemyQuestionRepository(db),
+        settings.upload_dir,
+    )
+    try:
+        question = use_case.execute(user_id, bank_id, question_id)
+        return _question_to_response(question, SQLAlchemyExamRepository(db))
+    except DomainError as e:
+        _handle_domain_error(e)
+
+
 @router.get("/question-banks/{bank_id}/questions/backup")
 def export_question_backup(
     bank_id: UUID,
@@ -484,6 +520,28 @@ def export_question_backup(
     return Response(
         content=content.encode("utf-8"),
         media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/question-banks/{bank_id}/questions/export")
+def export_question_bank_excel(
+    bank_id: UUID,
+    user_id: UUID = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    use_case = ExportQuestionBankExcelUseCase(
+        SQLAlchemyQuestionBankRepository(db),
+        SQLAlchemyQuestionRepository(db),
+    )
+    try:
+        content, filename = use_case.execute(user_id, bank_id)
+    except DomainError as e:
+        _handle_domain_error(e)
+
+    return Response(
+        content=content,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
@@ -583,6 +641,8 @@ def delete_exam(
     use_case = DeleteExamUseCase(
         SQLAlchemyExamRepository(db),
         SQLAlchemyAttemptRepository(db),
+        SQLAlchemyAttemptSnapshotRepository(db),
+        settings.upload_dir,
     )
     try:
         use_case.execute(user_id, exam_id)
@@ -745,6 +805,45 @@ def export_exam_report(
     )
 
 
+@router.get("/exams/{exam_id}/report/answers/export")
+def export_exam_attempts_answers(
+    exam_id: UUID,
+    email: str | None = Query(None, min_length=1),
+    user_id: UUID = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    report_use_case = GetExamReportUseCase(
+        SQLAlchemyExamRepository(db),
+        SQLAlchemyAttemptRepository(db),
+        SQLAlchemyInvitationRepository(db),
+        SQLAlchemyAnswerRepository(db),
+        SQLAlchemyProctoringRepository(db),
+    )
+    answers_use_case = GetAttemptAnswersReportUseCase(
+        SQLAlchemyExamRepository(db),
+        SQLAlchemyAttemptRepository(db),
+        SQLAlchemyInvitationRepository(db),
+        SQLAlchemyAnswerRepository(db),
+        SQLAlchemyQuestionRepository(db),
+        SQLAlchemyAttemptSnapshotRepository(db),
+    )
+    use_case = ExportExamAttemptsAnswersUseCase(
+        report_use_case,
+        answers_use_case,
+        SQLAlchemyAttemptRepository(db),
+    )
+    try:
+        content, filename = use_case.execute(user_id, exam_id, email)
+    except DomainError as e:
+        _handle_domain_error(e)
+
+    return Response(
+        content=content,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @router.delete("/exams/{exam_id}/invitee-results")
 def delete_invitee_exam_results(
     exam_id: UUID,
@@ -847,11 +946,7 @@ def get_exam_session(token: str, db: Session = Depends(get_db)):
     finished_attempts = [
         attempt for attempt in email_attempts if is_finished_attempt(attempt)
     ]
-    last_finished = (
-        max(finished_attempts, key=lambda attempt: attempt.attempt_number)
-        if finished_attempts
-        else None
-    )
+    last_finished = get_last_finished_attempt(email_attempts)
     proctoring_repo = SQLAlchemyProctoringRepository(db)
     terminated_for_violation = any(
         any(
@@ -882,6 +977,39 @@ def get_exam_session(token: str, db: Session = Depends(get_db)):
     else:
         display_attempt_number = 1
 
+    can_finish_early = (
+        not exam_finalized
+        and finished_count > 0
+        and not has_exhausted_attempts(exam, email_attempts)
+    )
+    pending_decision = pending_attempt_decision(
+        invitation,
+        in_progress,
+        can_start_new_attempt,
+        can_finish_early,
+        last_finished,
+    )
+
+    decision_seconds_remaining = None
+    auto_finalized = False
+    final_score = last_finished.score if last_finished else None
+    if pending_decision and last_finished and last_finished.submitted_at:
+        decision_seconds_remaining = compute_decision_seconds_remaining(last_finished.submitted_at)
+        if decision_seconds_remaining == 0:
+            finish_use_case = FinishExamEarlyUseCase(invitation_repo, attempt_repo)
+            try:
+                finish_result = finish_use_case.execute(token)
+            except DomainError:
+                finish_result = None
+            if finish_result:
+                auto_finalized = True
+                exam_finalized = True
+                can_start_new_attempt = False
+                can_finish_early = False
+                pending_decision = False
+                decision_seconds_remaining = 0
+                final_score = finish_result.get("final_score", final_score)
+
     return {
         "exam_title": exam.title,
         "exam_total_score": exam.total_score,
@@ -899,13 +1027,12 @@ def get_exam_session(token: str, db: Session = Depends(get_db)):
         "email_already_completed": email_already_completed,
         "email_in_progress": email_in_progress,
         "can_start_new_attempt": can_start_new_attempt,
-        "can_finish_early": (
-            not exam_finalized
-            and finished_count > 0
-            and not has_exhausted_attempts(exam, email_attempts)
-        ),
+        "can_finish_early": can_finish_early,
         "exam_finalized": exam_finalized,
-        "final_score": last_finished.score if last_finished else None,
+        "final_score": final_score,
+        "pending_decision": pending_decision,
+        "decision_seconds_remaining": decision_seconds_remaining,
+        "auto_finalized": auto_finalized,
         "requires_next_attempt": (
             exam.attempt_policy.value == "sequential"
             and finished_count > 0

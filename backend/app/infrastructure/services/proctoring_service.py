@@ -8,20 +8,9 @@ import aiofiles
 from app.config import settings
 from app.domain.enums import ProctoringEventType
 from app.domain.services import FileStorageService, ProctoringAnalysisResult, ProctoringService
+from app.infrastructure.services.upload_cleanup import delete_uploaded_file
 
-
-def delete_uploaded_file(upload_dir: str, public_url: str | None) -> None:
-    if not public_url or not public_url.startswith("/uploads/"):
-        return
-    relative = public_url[len("/uploads/") :].lstrip("/")
-    if not relative or ".." in relative.replace("\\", "/").split("/"):
-        return
-    path = os.path.join(upload_dir, relative)
-    try:
-        if os.path.isfile(path):
-            os.remove(path)
-    except OSError:
-        pass
+__all__ = ["delete_uploaded_file", "LocalFileStorageService", "LocalProctoringService"]
 
 
 class LocalFileStorageService(FileStorageService):

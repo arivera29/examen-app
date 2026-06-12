@@ -44,6 +44,8 @@ export class ExamReportComponent implements OnInit {
   report: ExamReport | null = null;
   deletingEmail: string | null = null;
   exportingReport = false;
+  exportingAnswers = false;
+  exportingInviteeEmail: string | null = null;
   displayedColumns = [
     'name',
     'email',
@@ -79,17 +81,7 @@ export class ExamReportComponent implements OnInit {
     this.api.downloadExamReportExport(this.examId).subscribe({
       next: (blob) => {
         this.exportingReport = false;
-        const safeTitle = this.report!.exam_title
-          .replace(/[^\w\-]+/g, '-')
-          .replace(/-+/g, '-')
-          .replace(/^-|-$/g, '') || 'examen';
-        const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-        const url = URL.createObjectURL(blob);
-        const anchor = document.createElement('a');
-        anchor.href = url;
-        anchor.download = `informe-${safeTitle}-${stamp}.xlsx`;
-        anchor.click();
-        URL.revokeObjectURL(url);
+        this.downloadBlob(blob, this.buildFilename('informe'));
         this.snackBar.open('Informe exportado a Excel', 'OK', { duration: 3000 });
       },
       error: (err) => {
@@ -99,6 +91,65 @@ export class ExamReportComponent implements OnInit {
         });
       },
     });
+  }
+
+  exportAllAnswers(): void {
+    if (!this.report || this.exportingAnswers) return;
+
+    this.exportingAnswers = true;
+    this.api.downloadExamAttemptsAnswersExport(this.examId).subscribe({
+      next: (blob) => {
+        this.exportingAnswers = false;
+        this.downloadBlob(blob, this.buildFilename('respuestas'));
+        this.snackBar.open('Respuestas exportadas a Excel', 'OK', { duration: 3000 });
+      },
+      error: (err) => {
+        this.exportingAnswers = false;
+        this.snackBar.open(err.error?.detail || 'Error al exportar respuestas', 'Cerrar', {
+          duration: 4000,
+        });
+      },
+    });
+  }
+
+  exportInviteeAnswers(row: IndividualReport): void {
+    if (this.exportingInviteeEmail === row.invitee_email) return;
+
+    this.exportingInviteeEmail = row.invitee_email;
+    this.api.downloadExamAttemptsAnswersExport(this.examId, row.invitee_email).subscribe({
+      next: (blob) => {
+        this.exportingInviteeEmail = null;
+        const emailPart = row.invitee_email.split('@')[0].replace(/[^\w\-]+/g, '-') || 'invitado';
+        this.downloadBlob(blob, this.buildFilename('respuestas', emailPart));
+        this.snackBar.open('Respuestas del invitado exportadas', 'OK', { duration: 3000 });
+      },
+      error: (err) => {
+        this.exportingInviteeEmail = null;
+        this.snackBar.open(err.error?.detail || 'Error al exportar respuestas', 'Cerrar', {
+          duration: 4000,
+        });
+      },
+    });
+  }
+
+  private buildFilename(prefix: string, suffix?: string): string {
+    const safeTitle = this.report!.exam_title
+      .replace(/[^\w\-]+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '') || 'examen';
+    const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    return suffix
+      ? `${prefix}-${safeTitle}-${suffix}-${stamp}.xlsx`
+      : `${prefix}-${safeTitle}-${stamp}.xlsx`;
+  }
+
+  private downloadBlob(blob: Blob, filename: string): void {
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = filename;
+    anchor.click();
+    URL.revokeObjectURL(url);
   }
 
   viewAnswers(row: IndividualReport): void {

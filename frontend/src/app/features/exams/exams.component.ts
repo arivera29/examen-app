@@ -10,8 +10,10 @@ import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatIconModule } from '@angular/material/icon';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { ApiService } from '../../core/services/api.service';
 import { Exam, QuestionBank } from '../../core/models';
+import { DeleteExamDialogComponent } from './delete-exam-dialog.component';
 
 @Component({
   selector: 'app-exams',
@@ -28,6 +30,7 @@ import { Exam, QuestionBank } from '../../core/models';
     MatSnackBarModule,
     MatIconModule,
     MatTooltipModule,
+    MatDialogModule,
   ],
   templateUrl: './exams.component.html',
   styleUrl: './exams.component.scss',
@@ -36,6 +39,7 @@ export class ExamsComponent implements OnInit {
   private readonly api = inject(ApiService);
   private readonly fb = inject(FormBuilder);
   private readonly snackBar = inject(MatSnackBar);
+  private readonly dialog = inject(MatDialog);
 
   exams: Exam[] = [];
   banks: QuestionBank[] = [];
@@ -209,20 +213,28 @@ export class ExamsComponent implements OnInit {
   }
 
   deleteExam(exam: Exam): void {
-    if (!confirm(`¿Eliminar el examen "${exam.title}"?`)) return;
-
-    this.api.deleteExam(exam.id).subscribe({
-      next: () => {
-        this.snackBar.open('Examen eliminado', 'OK', { duration: 2000 });
-        this.loadData();
+    const dialogRef = this.dialog.open(DeleteExamDialogComponent, {
+      width: '480px',
+      maxWidth: '95vw',
+      data: {
+        title: exam.title,
+        hasAttempts: Boolean(exam.has_attempts),
       },
-      error: (err) => this.snackBar.open(err.error?.detail || 'Error al eliminar', 'Cerrar', {
-        duration: 4000,
-      }),
     });
-  }
 
-  canDelete(exam: Exam): boolean {
-    return !exam.has_attempts;
+    dialogRef.afterClosed().subscribe((confirmed) => {
+      if (!confirmed) return;
+
+      this.api.deleteExam(exam.id).subscribe({
+        next: () => {
+          this.snackBar.open('Examen eliminado', 'OK', { duration: 2000 });
+          this.loadData();
+        },
+        error: (err) =>
+          this.snackBar.open(err.error?.detail || 'Error al eliminar', 'Cerrar', {
+            duration: 4000,
+          }),
+      });
+    });
   }
 }

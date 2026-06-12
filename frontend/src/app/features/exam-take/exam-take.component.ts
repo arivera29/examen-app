@@ -87,6 +87,7 @@ export class ExamTakeComponent implements OnInit, OnDestroy {
   isRecordingVideo = false;
   pendingResume = false;
   examTerminatedForViolation = false;
+  decisionSecondsRemaining: number | null = null;
   private tabViolationHandled = false;
 
   answers: Record<string, string[]> = {};
@@ -96,6 +97,7 @@ export class ExamTakeComponent implements OnInit, OnDestroy {
 
   private timerInterval?: ReturnType<typeof setInterval>;
   private questionTimerInterval?: ReturnType<typeof setInterval>;
+  private decisionTimerInterval?: ReturnType<typeof setInterval>;
   private proctoringInterval?: ReturnType<typeof setInterval>;
   private mediaStream?: MediaStream;
   private mediaRecorder?: MediaRecorder;
@@ -155,6 +157,9 @@ export class ExamTakeComponent implements OnInit, OnDestroy {
           if (info['final_score'] != null) {
             this.finalScore = Number(info['final_score']);
           }
+          this.stopDecisionTimer();
+        } else if (this.applyPendingDecisionState(info)) {
+          // Pantalla de elección tras completar un intento (incluye recarga de página).
         } else if (info['email_already_completed']) {
           this.examBlocked = true;
           this.blockMessage = 'Agotó los intentos disponibles para este examen.';
@@ -173,6 +178,8 @@ export class ExamTakeComponent implements OnInit, OnDestroy {
   }
 
   prepareAnotherAttempt(): void {
+    this.stopDecisionTimer();
+    this.decisionSecondsRemaining = null;
     this.examFinished = false;
     this.examStarted = false;
     this.pendingResume = false;
@@ -190,17 +197,22 @@ export class ExamTakeComponent implements OnInit, OnDestroy {
     this.loadSessionInfo();
   }
 
-  finishExamEarly(): void {
+  finishExamEarly(auto = false): void {
+    this.stopDecisionTimer();
     this.api.finishExamSession(this.token).subscribe({
       next: (result) => {
         this.examFinalized = true;
         this.examFinished = true;
         this.canStartNewAttempt = false;
         this.canFinishEarly = false;
+        this.decisionSecondsRemaining = null;
         if (result.final_score != null) {
           this.finalScore = result.final_score;
         }
-        this.snackBar.open('Examen finalizado con la calificación del último intento', 'OK', {
+        const message = auto
+          ? 'El examen se cerró automáticamente por inactividad'
+          : 'Examen finalizado con la calificación del último intento';
+        this.snackBar.open(message, 'OK', {
           duration: 5000,
         });
       },
@@ -216,12 +228,20 @@ export class ExamTakeComponent implements OnInit, OnDestroy {
     return this.session?.exam.total_score ?? this.examTotalScore;
   }
 
+  formatDecisionTime(): string {
+    const total = this.decisionSecondsRemaining ?? 0;
+    const minutes = Math.floor(total / 60);
+    const seconds = total % 60;
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  }
+
   ngOnDestroy(): void {
     this.examLockdown.disable();
     this.resetSnapshotPlan();
     this.stopVideoRecording(false);
     this.stopTimer();
     this.stopQuestionTimer();
+    this.stopDecisionTimer();
     this.stopProctoring();
     this.stopCamera();
     document.removeEventListener('mousemove', this.onMouseMove);
@@ -628,6 +648,96 @@ export class ExamTakeComponent implements OnInit, OnDestroy {
     this.requiresNextAttempt = Boolean(info['requires_next_attempt']);
     if (info['current_attempt_number']) {
       this.currentAttemptNumber = Number(info['current_attempt_number']);
+    }
+    if (info['exam_finalized']) {
+      this.examFinalized = true;
+      this.canStartNewAttempt = false;
+      this.canFinishEarly = false;
+      if (info['final_score'] != null) {
+        this.finalScore = Number(info['final_score']);
+      }
+      this.stopDecisionTimer();
+      this.decisionSecondsRemaining = null;
+      return;
+    }
+    this.syncDecisionTimer(info);
+  }
+
+  private applyPendingDecisionState(info: Record<string, unknown>): boolean {
+    const status = String(info['attempt_status'] ?? '');
+    const pending = Boolean(info['pending_decision']);
+    const awaitingDecision =
+      pending ||
+      ((status === 'submitted' || status === 'timed_out') &&
+        !info['exam_finalized'] &&
+        (Boolean(info['can_finish_early']) || Boolean(info['can_start_new_attempt'])));
+
+    if (!awaitingDecision) {
+      return false;
+    }
+
+    this.examFinished = true;
+    this.examBlocked = false;
+    if (info['final_score'] != null) {
+      this.finalScore = Number(info['final_score']);
+    }
+    if (info['auto_finalized']) {
+      this.examFinalized = true;
+      this.canStartNewAttempt = false;
+      this.canFinishEarly = false;
+      this.stopDecisionTimer();
+      this.decisionSecondsRemaining = null;
+      this.snackBar.open('El examen se cerró automáticamente por inactividad', 'OK', {
+        duration: 5000,
+      });
+      return true;
+    }
+
+    this.syncDecisionTimer(info);
+    return true;
+  }
+
+  private syncDecisionTimer(info: Record<string, unknown>): void {
+    const pending = Boolean(info['pending_decision']);
+    const remaining = info['decision_seconds_remaining'];
+    if (pending && typeof remaining === 'number') {
+      this.decisionSecondsRemaining = remaining;
+      if (remaining <= 0) {
+        this.finishExamEarly(true);
+        return;
+      }
+      this.startDecisionTimer();
+      return;
+    }
+
+    this.stopDecisionTimer();
+    this.decisionSecondsRemaining = null;
+  }
+
+  private startDecisionTimer(): void {
+    this.stopDecisionTimer();
+    if (this.decisionSecondsRemaining == null || this.decisionSecondsRemaining <= 0) {
+      return;
+    }
+
+    this.decisionTimerInterval = setInterval(() => {
+      if (this.decisionSecondsRemaining == null) {
+        return;
+      }
+      if (this.decisionSecondsRemaining <= 1) {
+        this.decisionSecondsRemaining = 0;
+        this.stopDecisionTimer();
+        this.finishExamEarly(true);
+        return;
+      }
+      this.decisionSecondsRemaining--;
+    }, 1000);
+  }
+
+  private stopDecisionTimer(): void {
+    if (this.decisionTimerInterval) {
+      clearInterval(this.decisionTimerInterval);
+      this.decisionTimerInterval = undefined;
     }
   }
 

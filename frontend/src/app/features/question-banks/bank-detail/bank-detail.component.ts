@@ -1,4 +1,5 @@
 import { Component, inject, OnInit } from '@angular/core';
+import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { MatCardModule } from '@angular/material/card';
 import { MatButtonModule } from '@angular/material/button';
@@ -7,6 +8,10 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatPaginatorModule, PageEvent } from '@angular/material/paginator';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
+import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatInputModule } from '@angular/material/input';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { debounceTime, distinctUntilChanged } from 'rxjs/operators';
 import { ApiService } from '../../../core/services/api.service';
 import { Question, Topic } from '../../../core/models';
 import { QuestionFormDialogComponent } from './question-form-dialog.component';
@@ -16,6 +21,7 @@ import { QuestionFormDialogComponent } from './question-form-dialog.component';
   standalone: true,
   imports: [
     RouterLink,
+    ReactiveFormsModule,
     MatCardModule,
     MatButtonModule,
     MatIconModule,
@@ -23,6 +29,8 @@ import { QuestionFormDialogComponent } from './question-form-dialog.component';
     MatSnackBarModule,
     MatPaginatorModule,
     MatDialogModule,
+    MatFormFieldModule,
+    MatInputModule,
   ],
   templateUrl: './bank-detail.component.html',
   styleUrl: './bank-detail.component.scss',
@@ -40,6 +48,17 @@ export class BankDetailComponent implements OnInit {
   pageSize = 10;
   pageSizeOptions = [5, 10, 25, 50];
   totalQuestions = 0;
+  exportingExcel = false;
+  searchControl = new FormControl('', { nonNullable: true });
+
+  constructor() {
+    this.searchControl.valueChanges
+      .pipe(debounceTime(300), distinctUntilChanged(), takeUntilDestroyed())
+      .subscribe(() => {
+        this.pageIndex = 0;
+        this.loadQuestions();
+      });
+  }
 
   ngOnInit(): void {
     this.bankId = this.route.snapshot.paramMap.get('id')!;
@@ -48,13 +67,19 @@ export class BankDetailComponent implements OnInit {
   }
 
   loadQuestions(): void {
-    this.api.getQuestions(this.bankId, this.pageIndex + 1, this.pageSize).subscribe((result) => {
-      this.questions = result.items;
-      this.totalQuestions = result.total;
-      if (result.page !== this.pageIndex + 1) {
-        this.pageIndex = Math.max(0, result.page - 1);
-      }
-    });
+    this.api
+      .getQuestions(this.bankId, this.pageIndex + 1, this.pageSize, this.searchControl.value)
+      .subscribe((result) => {
+        this.questions = result.items;
+        this.totalQuestions = result.total;
+        if (result.page !== this.pageIndex + 1) {
+          this.pageIndex = Math.max(0, result.page - 1);
+        }
+      });
+  }
+
+  clearSearch(): void {
+    this.searchControl.setValue('');
   }
 
   onPageChange(event: PageEvent): void {
@@ -105,6 +130,18 @@ export class BankDetailComponent implements OnInit {
     });
   }
 
+  duplicateQuestion(question: Question): void {
+    this.api.duplicateQuestion(this.bankId, question.id).subscribe({
+      next: () => {
+        this.snackBar.open('Pregunta duplicada', 'OK', { duration: 2000 });
+        this.loadQuestions();
+      },
+      error: (err) => this.snackBar.open(err.error?.detail || 'Error al duplicar', 'Cerrar', {
+        duration: 4000,
+      }),
+    });
+  }
+
   canDelete(question: Question): boolean {
     return !question.used_in_exam;
   }
@@ -123,6 +160,31 @@ export class BankDetailComponent implements OnInit {
       error: (err) => this.snackBar.open(err.error?.detail || 'Error al descargar', 'Cerrar', {
         duration: 4000,
       }),
+    });
+  }
+
+  exportExcel(): void {
+    if (this.exportingExcel) return;
+
+    this.exportingExcel = true;
+    this.api.downloadQuestionBankExcel(this.bankId).subscribe({
+      next: (blob) => {
+        this.exportingExcel = false;
+        const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = `banco-preguntas-${this.bankId}-${stamp}.xlsx`;
+        anchor.click();
+        URL.revokeObjectURL(url);
+        this.snackBar.open('Banco exportado a Excel', 'OK', { duration: 3000 });
+      },
+      error: (err) => {
+        this.exportingExcel = false;
+        this.snackBar.open(err.error?.detail || 'Error al exportar', 'Cerrar', {
+          duration: 4000,
+        });
+      },
     });
   }
 

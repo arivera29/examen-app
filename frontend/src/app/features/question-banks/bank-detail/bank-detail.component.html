@@ -13,6 +13,10 @@
 
 <mat-card class="backup-card">
   <div class="backup-actions">
+    <button mat-stroked-button type="button" (click)="exportExcel()" [disabled]="exportingExcel">
+      <mat-icon>table_chart</mat-icon>
+      Exportar Excel
+    </button>
     <button mat-stroked-button type="button" (click)="downloadBackup()">
       <mat-icon>download</mat-icon>
       Descargar backup
@@ -30,12 +34,26 @@
     </button>
   </div>
   <p class="backup-hint">
-    Exporta o importa preguntas en JSON. Las imágenes no se incluyen en el backup.
+    Exporta preguntas y respuestas a Excel, o usa el backup JSON para importar/restaurar. Las imágenes no
+    se incluyen en el backup JSON.
   </p>
 </mat-card>
 
 <mat-card class="actions-card">
-  <button mat-flat-button color="primary" (click)="openCreateForm()">Nueva pregunta</button>
+  <div class="actions-row">
+    <button mat-flat-button color="primary" (click)="openCreateForm()">Nueva pregunta</button>
+    <mat-form-field class="search-field" appearance="outline" subscriptSizing="dynamic">
+      <mat-label>Buscar preguntas</mat-label>
+      <input matInput [formControl]="searchControl" placeholder="Texto, tema u opción" />
+      @if (searchControl.value) {
+        <button mat-icon-button matSuffix type="button" (click)="clearSearch()" aria-label="Limpiar búsqueda">
+          <mat-icon>close</mat-icon>
+        </button>
+      } @else {
+        <mat-icon matSuffix>search</mat-icon>
+      }
+    </mat-form-field>
+  </div>
 </mat-card>
 
 <mat-card>
@@ -55,6 +73,9 @@
           }
         </div>
         <div class="question-icon-actions">
+          <button mat-icon-button (click)="duplicateQuestion(q)" matTooltip="Duplicar">
+            <mat-icon>content_copy</mat-icon>
+          </button>
           <button mat-icon-button color="primary" (click)="openEditForm(q)" matTooltip="Editar">
             <mat-icon>edit</mat-icon>
           </button>
@@ -81,7 +102,13 @@
       }
     </div>
   } @empty {
-    <p class="empty">No hay preguntas en este banco.</p>
+    <p class="empty">
+      @if (searchControl.value.trim()) {
+        No se encontraron preguntas para "{{ searchControl.value.trim() }}".
+      } @else {
+        No hay preguntas en este banco.
+      }
+    </p>
   }
   @if (totalQuestions > 0) {
     <mat-paginator

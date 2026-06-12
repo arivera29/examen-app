@@ -36,10 +36,20 @@ export class ApiService {
     return this.http.delete<void>(`${this.baseUrl}/question-banks/${bankId}`);
   }
 
-  getQuestions(bankId: string, page = 1, pageSize = 10): Observable<PaginatedQuestions> {
+  getQuestions(
+    bankId: string,
+    page = 1,
+    pageSize = 10,
+    search = ''
+  ): Observable<PaginatedQuestions> {
+    const params: Record<string, string | number> = { page, page_size: pageSize };
+    const trimmed = search.trim();
+    if (trimmed) {
+      params['search'] = trimmed;
+    }
     return this.http.get<PaginatedQuestions>(
       `${this.baseUrl}/question-banks/${bankId}/questions`,
-      { params: { page, page_size: pageSize } }
+      { params }
     );
   }
 
@@ -60,8 +70,21 @@ export class ApiService {
     );
   }
 
+  duplicateQuestion(bankId: string, questionId: string): Observable<Question> {
+    return this.http.post<Question>(
+      `${this.baseUrl}/question-banks/${bankId}/questions/${questionId}/duplicate`,
+      {}
+    );
+  }
+
   downloadQuestionBackup(bankId: string): Observable<Blob> {
     return this.http.get(`${this.baseUrl}/question-banks/${bankId}/questions/backup`, {
+      responseType: 'blob',
+    });
+  }
+
+  downloadQuestionBankExcel(bankId: string): Observable<Blob> {
+    return this.http.get(`${this.baseUrl}/question-banks/${bankId}/questions/export`, {
       responseType: 'blob',
     });
   }
@@ -138,6 +161,17 @@ export class ApiService {
   downloadExamReportExport(examId: string): Observable<Blob> {
     return this.http.get(`${this.baseUrl}/exams/${examId}/report/export`, {
       responseType: 'blob',
+    });
+  }
+
+  downloadExamAttemptsAnswersExport(examId: string, email?: string): Observable<Blob> {
+    const params: Record<string, string> = {};
+    if (email?.trim()) {
+      params['email'] = email.trim();
+    }
+    return this.http.get(`${this.baseUrl}/exams/${examId}/report/answers/export`, {
+      responseType: 'blob',
+      params,
     });
   }
 

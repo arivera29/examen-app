@@ -52,6 +52,12 @@
             Puedes realizar otro intento o finalizar el examen con la calificación de este intento.
           </p>
         }
+        @if (decisionSecondsRemaining !== null && decisionSecondsRemaining > 0) {
+          <p class="decision-timer">
+            Si no eliges una opción, el examen se cerrará automáticamente en
+            <strong>{{ formatDecisionTime() }}</strong>.
+          </p>
+        }
         <div class="result-actions">
           @if (canStartNewAttempt) {
             <button mat-flat-button color="primary" (click)="prepareAnotherAttempt()">

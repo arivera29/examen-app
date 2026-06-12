@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from sqlalchemy import func
+from sqlalchemy import exists, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.application.attempt_access import count_finished_attempts, get_in_progress_attempt
@@ -349,18 +349,42 @@ class SQLAlchemyQuestionRepository(QuestionRepository):
         )
         return [_question_to_entity(m) for m in models]
 
-    def count_by_bank(self, bank_id: UUID) -> int:
-        return (
-            self._session.query(QuestionModel)
-            .filter(QuestionModel.bank_id == bank_id)
-            .count()
+    def _bank_questions_query(self, bank_id: UUID, search: str | None = None):
+        query = self._session.query(QuestionModel).filter(QuestionModel.bank_id == bank_id)
+        normalized = (search or "").strip()
+        if not normalized:
+            return query
+
+        term = f"%{normalized}%"
+        option_match = exists(
+            select(1).where(
+                QuestionOptionModel.question_id == QuestionModel.id,
+                QuestionOptionModel.text.ilike(term),
+            )
+        )
+        topic_match = exists(
+            select(1).where(
+                TopicModel.id == QuestionModel.topic_id,
+                TopicModel.name.ilike(term),
+            )
+        )
+        return query.filter(
+            or_(
+                QuestionModel.text.ilike(term),
+                topic_match,
+                option_match,
+            )
         )
 
-    def list_by_bank_paginated(self, bank_id: UUID, page: int, page_size: int) -> list[Question]:
+    def count_by_bank(self, bank_id: UUID, search: str | None = None) -> int:
+        return self._bank_questions_query(bank_id, search).count()
+
+    def list_by_bank_paginated(
+        self, bank_id: UUID, page: int, page_size: int, search: str | None = None
+    ) -> list[Question]:
         offset = (page - 1) * page_size
         models = (
-            self._session.query(QuestionModel)
-            .filter(QuestionModel.bank_id == bank_id)
+            self._bank_questions_query(bank_id, search)
             .order_by(QuestionModel.created_at)
             .offset(offset)
             .limit(page_size)

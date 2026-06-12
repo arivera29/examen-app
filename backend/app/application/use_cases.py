@@ -390,6 +390,45 @@ class DeleteQuestionUseCase:
             raise NotFoundError("Question not found")
 
 
+class DuplicateQuestionUseCase:
+    def __init__(
+        self,
+        bank_repo: QuestionBankRepository,
+        question_repo: QuestionRepository,
+        upload_dir: str,
+    ):
+        self._bank_repo = bank_repo
+        self._question_repo = question_repo
+        self._upload_dir = upload_dir
+
+    def execute(self, owner_id: UUID, bank_id: UUID, question_id: UUID) -> Question:
+        from app.infrastructure.services.upload_cleanup import copy_uploaded_file
+
+        bank = self._bank_repo.get_by_id(bank_id)
+        if not bank or bank.owner_id != owner_id:
+            raise NotFoundError("Question bank not found")
+
+        source = self._question_repo.get_by_id_in_bank(bank_id, question_id)
+        if not source or source.owner_id != owner_id:
+            raise NotFoundError("Question not found")
+
+        image_url = copy_uploaded_file(self._upload_dir, source.image_url)
+
+        duplicate = Question(
+            text=f"{source.text} (copia)",
+            question_type=source.question_type,
+            topic_id=source.topic_id,
+            time_seconds=source.time_seconds,
+            owner_id=owner_id,
+            image_url=image_url,
+            options=[
+                QuestionOption(text=opt.text, is_correct=opt.is_correct, order=opt.order)
+                for opt in source.options
+            ],
+        )
+        return self._question_repo.create_in_bank(bank_id, duplicate)
+
+
 class ExportQuestionBankBackupUseCase:
     def __init__(
         self,
@@ -405,6 +444,32 @@ class ExportQuestionBankBackupUseCase:
             raise NotFoundError("Question bank not found")
         questions = self._question_repo.list_by_bank(bank_id)
         return build_backup_payload(bank, questions)
+
+
+class ExportQuestionBankExcelUseCase:
+    def __init__(
+        self,
+        bank_repo: QuestionBankRepository,
+        question_repo: QuestionRepository,
+    ):
+        self._bank_repo = bank_repo
+        self._question_repo = question_repo
+
+    def execute(self, owner_id: UUID, bank_id: UUID) -> tuple[bytes, str]:
+        from app.application.question_bank_export import build_export_filename, build_question_bank_workbook
+        from app.application.question_backup import build_backup_payload
+
+        bank = self._bank_repo.get_by_id(bank_id)
+        if not bank or bank.owner_id != owner_id:
+            raise NotFoundError("Question bank not found")
+
+        questions = self._question_repo.list_by_bank(bank_id)
+        payload = build_backup_payload(bank, questions)
+        payload["bank_description"] = bank.description
+        payload["total_questions"] = len(questions)
+        content = build_question_bank_workbook(payload)
+        filename = build_export_filename(payload)
+        return content, filename
 
 
 class RestoreQuestionBankBackupUseCase:
@@ -655,23 +720,27 @@ class DeleteExamUseCase:
         self,
         exam_repo: ExamRepository,
         attempt_repo: AttemptRepository,
+        snapshot_repo: AttemptSnapshotRepository,
+        upload_dir: str,
     ):
         self._exam_repo = exam_repo
         self._attempt_repo = attempt_repo
+        self._snapshot_repo = snapshot_repo
+        self._upload_dir = upload_dir
 
     def execute(self, owner_id: UUID, exam_id: UUID) -> None:
+        from app.infrastructure.services.upload_cleanup import delete_uploaded_file
+
         exam = self._exam_repo.get_by_id(exam_id)
         if not exam or exam.owner_id != owner_id:
             raise NotFoundError("Exam not found")
 
         attempts = self._attempt_repo.list_by_exam(exam_id)
-        if any(
-            a.status in (AttemptStatus.IN_PROGRESS, AttemptStatus.SUBMITTED, AttemptStatus.TIMED_OUT)
-            for a in attempts
-        ):
-            raise ValidationError(
-                "No se puede eliminar un examen con intentos iniciados o completados"
-            )
+        for attempt in attempts:
+            snapshots = self._snapshot_repo.list_by_attempt(attempt.id)
+            for snapshot in snapshots:
+                delete_uploaded_file(self._upload_dir, snapshot.image_url)
+            delete_uploaded_file(self._upload_dir, attempt.attempt_video_url)
 
         if not self._exam_repo.delete(exam_id):
             raise NotFoundError("Exam not found")
@@ -838,7 +907,7 @@ class DeleteInviteeExamResultsUseCase:
         self._upload_dir = upload_dir
 
     def execute(self, owner_id: UUID, exam_id: UUID, invitee_email: str) -> dict:
-        from app.infrastructure.services.proctoring_service import delete_uploaded_file
+        from app.infrastructure.services.upload_cleanup import delete_uploaded_file
 
         exam = self._exam_repo.get_by_id(exam_id)
         if not exam or exam.owner_id != owner_id:
@@ -1593,3 +1662,53 @@ class GetAttemptAnswersReportUseCase:
             return []
         selected_ids = set(answer.selected_option_ids)
         return [option.text for option in question.options if option.id in selected_ids]
+
+
+class ExportExamAttemptsAnswersUseCase:
+    def __init__(
+        self,
+        report_use_case: GetExamReportUseCase,
+        answers_use_case: GetAttemptAnswersReportUseCase,
+        attempt_repo: AttemptRepository,
+    ):
+        self._report_use_case = report_use_case
+        self._answers_use_case = answers_use_case
+        self._attempt_repo = attempt_repo
+
+    def execute(
+        self, owner_id: UUID, exam_id: UUID, invitee_email: str | None = None
+    ) -> tuple[bytes, str]:
+        from app.application.attempt_access import is_finished_attempt
+        from app.application.exam_attempts_answers_export import (
+            build_attempts_answers_filename,
+            build_attempts_answers_workbook,
+        )
+
+        report = self._report_use_case.execute(owner_id, exam_id)
+        normalized_email = invitee_email.strip() if invitee_email else None
+        if normalized_email == "":
+            normalized_email = None
+
+        if normalized_email:
+            attempts = self._attempt_repo.list_by_email(exam_id, normalized_email)
+        else:
+            attempts = self._attempt_repo.list_by_exam(exam_id)
+
+        finished_attempts = sorted(
+            [attempt for attempt in attempts if is_finished_attempt(attempt)],
+            key=lambda attempt: attempt.attempt_number,
+        )
+        if not finished_attempts:
+            raise ValidationError("No hay intentos finalizados para exportar")
+
+        attempt_reports = [
+            self._answers_use_case.execute(owner_id, exam_id, attempt.id)
+            for attempt in finished_attempts
+        ]
+        attempt_reports.sort(
+            key=lambda item: (item["invitee_email"].lower(), item.get("attempt_number") or 1)
+        )
+
+        content = build_attempts_answers_workbook(report["exam_title"], attempt_reports)
+        filename = build_attempts_answers_filename(report["exam_title"], normalized_email)
+        return content, filename
