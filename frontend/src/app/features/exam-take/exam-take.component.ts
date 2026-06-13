@@ -88,6 +88,7 @@ export class ExamTakeComponent implements OnInit, OnDestroy {
   pendingResume = false;
   examTerminatedForViolation = false;
   decisionSecondsRemaining: number | null = null;
+  private preparingNewAttempt = false;
   private tabViolationHandled = false;
 
   answers: Record<string, string[]> = {};
@@ -139,6 +140,15 @@ export class ExamTakeComponent implements OnInit, OnDestroy {
           ? Number(info['current_attempt_number'])
           : null;
 
+        if (this.preparingNewAttempt) {
+          this.preparingNewAttempt = false;
+          this.examFinished = false;
+          this.examStarted = false;
+          this.examBlocked = false;
+          this.pendingResume = false;
+          return;
+        }
+
         if (info['terminated_for_violation']) {
           this.examTerminatedForViolation = true;
           this.examFinished = true;
@@ -180,6 +190,7 @@ export class ExamTakeComponent implements OnInit, OnDestroy {
   prepareAnotherAttempt(): void {
     this.stopDecisionTimer();
     this.decisionSecondsRemaining = null;
+    this.preparingNewAttempt = true;
     this.examFinished = false;
     this.examStarted = false;
     this.pendingResume = false;
@@ -658,6 +669,9 @@ export class ExamTakeComponent implements OnInit, OnDestroy {
       }
       this.stopDecisionTimer();
       this.decisionSecondsRemaining = null;
+      return;
+    }
+    if (this.preparingNewAttempt || (!this.examFinished && this.examStarted)) {
       return;
     }
     this.syncDecisionTimer(info);
