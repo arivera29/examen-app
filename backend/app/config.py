@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     mailtrap_from_name: str = "Examen App"
     mailtrap_category: str = "Examen App"
     frontend_url: str = "http://localhost:4200"
+    invitation_base_url: str = ""
     cors_origins: str = "http://localhost:4200"
     cors_allow_ngrok: bool = True
     proctoring_fraud_threshold: float = 0.7

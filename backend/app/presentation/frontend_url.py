@@ -46,3 +46,10 @@ def resolve_frontend_url(request: Request | None = None) -> str:
                     return referer_origin
 
     return _normalize_origin(settings.frontend_url)
+
+
+def resolve_invitation_base_url() -> str:
+    configured = (settings.invitation_base_url or "").strip()
+    if configured:
+        return _normalize_origin(configured)
+    return _normalize_origin(settings.frontend_url)

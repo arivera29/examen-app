@@ -94,7 +94,7 @@ from app.infrastructure.services.auth_services import (
 from app.infrastructure.services.email_service import get_email_service
 from app.infrastructure.services.proctoring_service import LocalFileStorageService, MLProctoringService
 from app.presentation.dependencies import get_current_user_id
-from app.presentation.frontend_url import resolve_frontend_url
+from app.presentation.frontend_url import resolve_invitation_base_url
 from app.presentation.schemas import (
     AttemptAnswerDetailResponse,
     AttemptAnswersReportResponse,
@@ -664,7 +664,7 @@ async def invite_to_exam(
         SQLAlchemyInvitationRepository(db),
         SQLAlchemyAttemptRepository(db),
         email_service,
-        resolve_frontend_url(http_request),
+        resolve_invitation_base_url(),
     )
     try:
         invitations = await use_case.execute(user_id, exam_id, [str(e) for e in request.emails])
@@ -689,7 +689,7 @@ def list_exam_invitations(
         SQLAlchemyExamRepository(db),
         SQLAlchemyInvitationRepository(db),
         SQLAlchemyAttemptRepository(db),
-        resolve_frontend_url(http_request),
+        resolve_invitation_base_url(),
     )
     try:
         return use_case.execute(user_id, exam_id)
@@ -724,7 +724,7 @@ async def resend_exam_invitation(
     db: Session = Depends(get_db),
 ):
     email_service = get_email_service()
-    frontend_url = resolve_frontend_url(http_request)
+    frontend_url = resolve_invitation_base_url()
     use_case = ResendExamInvitationUseCase(
         SQLAlchemyExamRepository(db),
         SQLAlchemyInvitationRepository(db),
