@@ -113,7 +113,7 @@ def build_exam_report_workbook(report: dict) -> bytes:
         "Acertadas",
         "No acertadas",
         "Estado",
-        "Fraude (%)",
+        "Fraude final (%)",
         "Eventos supervisión",
         "Inicio",
         "Envío",

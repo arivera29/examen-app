@@ -35,8 +35,8 @@ from app.application.use_cases import (
     UnauthorizedError,
     ValidationError,
 )
-from app.domain.entities import Answer, AttemptSnapshot, Exam, ExamAttempt, ExamInvitation, ExamQuestionConfig, Question, QuestionBank, QuestionOption, User
-from app.domain.enums import AttemptStatus, ExamMode, InvitationStatus, QuestionType, SnapshotType
+from app.domain.entities import Answer, AttemptSnapshot, Exam, ExamAttempt, ExamInvitation, ExamQuestionConfig, ProctoringEvent, Question, QuestionBank, QuestionOption, User
+from app.domain.enums import AttemptStatus, ExamMode, InvitationStatus, ProctoringEventType, QuestionType, SnapshotType
 from app.domain.services import ProctoringAnalysisResult, TokenPair
 
 FUTURE_CLOSES_AT = datetime.now(timezone.utc) + timedelta(days=7)
@@ -1092,7 +1092,37 @@ class TestProctoringAnalysisUseCase:
         event = use_case.execute(attempt_id, b"frame_data", [])
 
         assert event is not None
+        assert attempt.fraud_score == 0.8
         attempt_repo.update.assert_called()
+
+    def test_fraud_score_uses_max_confidence_not_cumulative(self):
+        attempt_id = uuid4()
+        attempt = ExamAttempt(
+            id=attempt_id,
+            invitation_id=uuid4(),
+            exam_id=uuid4(),
+            status=AttemptStatus.IN_PROGRESS,
+            fraud_score=0.3,
+        )
+
+        attempt_repo = MagicMock()
+        attempt_repo.get_by_id.return_value = attempt
+        proctoring_repo = MagicMock()
+        proctoring_repo.create.side_effect = lambda e: e
+
+        proctoring_service = MagicMock()
+        proctoring_service.analyze_frame.return_value = ProctoringAnalysisResult(
+            fraud_detected=True,
+            fraud_score=0.8,
+            event_type="eye_movement",
+            confidence=0.55,
+            details={},
+        )
+
+        use_case = ProctoringAnalysisUseCase(attempt_repo, proctoring_repo, proctoring_service)
+        use_case.execute(attempt_id, b"frame_data", [])
+
+        assert attempt.fraud_score == 0.55
 
 
 class TestSubmitExamUseCase:
@@ -1373,6 +1403,92 @@ class TestGetExamReportUseCase:
         assert report["individual_reports"][0]["attempt_number"] == 2
         assert report["individual_reports"][0]["attempt_id"] == str(attempt_two_id)
         assert report["summary"]["average_score"] == 4.0
+
+    def test_uses_final_attempt_fraud_only(self):
+        owner_id = uuid4()
+        exam_id = uuid4()
+        invitation_id = uuid4()
+        exam = Exam(
+            title="Exam",
+            description="",
+            owner_id=owner_id,
+            question_bank_id=uuid4(),
+            mode=ExamMode.REAL,
+            total_score=5,
+            question_count=2,
+            closes_at=FUTURE_CLOSES_AT,
+            random_selection=True,
+            max_attempts=3,
+            id=exam_id,
+        )
+        invitation = ExamInvitation(
+            id=invitation_id,
+            exam_id=exam_id,
+            invitee_email="student@test.com",
+            token="token",
+            status=InvitationStatus.COMPLETED,
+        )
+        attempt_one_id = uuid4()
+        attempt_two_id = uuid4()
+        attempts = [
+            ExamAttempt(
+                id=attempt_one_id,
+                invitation_id=invitation_id,
+                exam_id=exam_id,
+                status=AttemptStatus.SUBMITTED,
+                attempt_number=1,
+                score=3.0,
+                fraud_score=0.95,
+            ),
+            ExamAttempt(
+                id=attempt_two_id,
+                invitation_id=invitation_id,
+                exam_id=exam_id,
+                status=AttemptStatus.SUBMITTED,
+                attempt_number=2,
+                score=4.0,
+                fraud_score=0.15,
+            ),
+        ]
+
+        exam_repo = MagicMock()
+        exam_repo.get_by_id.return_value = exam
+        attempt_repo = MagicMock()
+        attempt_repo.list_by_exam.return_value = attempts
+        invitation_repo = MagicMock()
+        invitation_repo.list_by_exam.return_value = [invitation]
+        answer_repo = MagicMock()
+        answer_repo.get_by_attempt.return_value = []
+
+        def list_events(attempt_id):
+            if attempt_id == attempt_one_id:
+                return [
+                    ProctoringEvent(
+                        attempt_id=attempt_one_id,
+                        event_type=ProctoringEventType.EYE_MOVEMENT,
+                        confidence=0.95,
+                    )
+                ]
+            return [
+                ProctoringEvent(
+                    attempt_id=attempt_two_id,
+                    event_type=ProctoringEventType.NO_FACE,
+                    confidence=0.15,
+                )
+            ]
+
+        proctoring_repo = MagicMock()
+        proctoring_repo.list_by_attempt.side_effect = list_events
+
+        use_case = GetExamReportUseCase(
+            exam_repo, attempt_repo, invitation_repo, answer_repo, proctoring_repo
+        )
+        report = use_case.execute(owner_id, exam_id)
+
+        row = report["individual_reports"][0]
+        assert row["attempt_number"] == 2
+        assert row["fraud_score"] == 0.15
+        proctoring_repo.list_by_attempt.assert_called_with(attempt_two_id)
 
     def test_counts_only_attempt_questions(self):
         owner_id = uuid4()

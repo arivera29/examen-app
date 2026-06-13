@@ -10,6 +10,7 @@ from app.application.attempt_access import (
     is_finished_attempt,
     resolve_attempt_start,
 )
+from app.application.attempt_fraud import compute_attempt_fraud_score, resolve_final_attempt
 from app.application.attempt_questions import (
     assign_attempt_questions,
     get_attempt_question_configs,
@@ -1282,7 +1283,7 @@ class TerminateExamForTabSwitchUseCase:
                     metadata={"reason": "Cambio de pestaña o ventana detectado"},
                 )
             )
-            in_progress.fraud_score = min(1.0, in_progress.fraud_score + 0.5)
+            in_progress.fraud_score = min(1.0, max(in_progress.fraud_score, 1.0))
             self._attempt_repo.update(in_progress)
             self._submit_exam_use_case.execute(in_progress.id, skip_video_required=True)
             email_attempts = self._attempt_repo.list_by_email(
@@ -1300,12 +1301,10 @@ class TerminateExamForTabSwitchUseCase:
 
     def _build_response(self, email_attempts: list[ExamAttempt], *, terminated_now: bool) -> dict:
         finished = [attempt for attempt in email_attempts if is_finished_attempt(attempt)]
-        last_attempt = (
-            max(finished, key=lambda attempt: attempt.attempt_number) if finished else None
-        )
+        final_attempt = resolve_final_attempt(finished)
         return {
-            "final_score": last_attempt.score if last_attempt else None,
-            "attempt_number": last_attempt.attempt_number if last_attempt else None,
+            "final_score": final_attempt.score if final_attempt else None,
+            "attempt_number": final_attempt.attempt_number if final_attempt else None,
             "exam_finalized": True,
             "terminated_for_violation": True,
             "terminated_now": terminated_now,
@@ -1339,14 +1338,17 @@ class FinishExamEarlyUseCase:
         if not finished:
             raise ValidationError("Debe completar al menos un intento antes de finalizar")
 
-        last_attempt = max(finished, key=lambda attempt: attempt.attempt_number)
+        final_attempt = resolve_final_attempt(finished)
+        if not final_attempt:
+            raise ValidationError("Debe completar al menos un intento antes de finalizar")
+
         invitation.status = InvitationStatus.COMPLETED
         invitation.decision_deadline_at = None
         self._invitation_repo.update(invitation)
 
         return {
-            "final_score": last_attempt.score,
-            "attempt_number": last_attempt.attempt_number,
+            "final_score": final_attempt.score,
+            "attempt_number": final_attempt.attempt_number,
             "exam_finalized": True,
         }
 
@@ -1417,7 +1419,7 @@ class ProctoringAnalysisUseCase:
                 metadata=result.details,
             )
             event = self._proctoring_repo.create(event)
-            attempt.fraud_score = min(1.0, attempt.fraud_score + result.fraud_score * 0.1)
+            attempt.fraud_score = min(1.0, max(attempt.fraud_score, result.confidence))
             self._attempt_repo.update(attempt)
             return event
         return None
@@ -1524,46 +1526,46 @@ class GetExamReportUseCase:
                 [attempt for attempt in email_attempts if is_finished_attempt(attempt)],
                 key=lambda attempt: attempt.attempt_number,
             )
-            if finished:
-                last_attempt = finished[-1]
-            else:
-                last_attempt = max(email_attempts, key=lambda attempt: attempt.attempt_number)
+            report_attempt = resolve_final_attempt(finished)
+            if not report_attempt:
+                report_attempt = max(email_attempts, key=lambda attempt: attempt.attempt_number)
 
-            invitation = invitations.get(last_attempt.invitation_id)
-            answers = self._answer_repo.get_by_attempt(last_attempt.id)
-            events = self._proctoring_repo.list_by_attempt(last_attempt.id)
-            answer_stats = summarize_attempt_answers(exam, last_attempt, answers)
+            invitation = invitations.get(report_attempt.invitation_id)
+            answers = self._answer_repo.get_by_attempt(report_attempt.id)
+            events = self._proctoring_repo.list_by_attempt(report_attempt.id)
+            answer_stats = summarize_attempt_answers(exam, report_attempt, answers)
             correct_answers_count = answer_stats["correct_count"]
             incorrect_answers_count = answer_stats["incorrect_count"]
             answers_count = answer_stats["answered_count"]
-            if last_attempt.status == AttemptStatus.SUBMITTED and last_attempt.score is not None:
-                final_scores.append(last_attempt.score)
+            fraud_score = compute_attempt_fraud_score(report_attempt, events)
+            if report_attempt.status == AttemptStatus.SUBMITTED and report_attempt.score is not None:
+                final_scores.append(report_attempt.score)
                 completed_correct_counts.append(correct_answers_count)
                 completed_incorrect_counts.append(incorrect_answers_count)
 
             individual_reports.append(
                 {
-                    "attempt_id": str(last_attempt.id),
-                    "attempt_number": last_attempt.attempt_number,
+                    "attempt_id": str(report_attempt.id),
+                    "attempt_number": report_attempt.attempt_number,
                     "attempts_used": len(finished),
                     "invitee_email": invitation.invitee_email if invitation else "",
-                    "invitee_full_name": last_attempt.invitee_full_name,
-                    "score": last_attempt.score,
+                    "invitee_full_name": report_attempt.invitee_full_name,
+                    "score": report_attempt.score,
                     "total_score": exam.total_score,
                     "percentage": (
-                        (last_attempt.score / exam.total_score * 100)
-                        if last_attempt.score is not None and exam.total_score
+                        (report_attempt.score / exam.total_score * 100)
+                        if report_attempt.score is not None and exam.total_score
                         else 0
                     ),
-                    "status": last_attempt.status.value,
-                    "fraud_score": last_attempt.fraud_score,
+                    "status": report_attempt.status.value,
+                    "fraud_score": fraud_score,
                     "proctoring_events_count": len(events),
                     "answers_count": answers_count,
                     "correct_answers_count": correct_answers_count,
                     "incorrect_answers_count": incorrect_answers_count,
-                    "started_at": last_attempt.started_at.isoformat() if last_attempt.started_at else None,
+                    "started_at": report_attempt.started_at.isoformat() if report_attempt.started_at else None,
                     "submitted_at": (
-                        last_attempt.submitted_at.isoformat() if last_attempt.submitted_at else None
+                        report_attempt.submitted_at.isoformat() if report_attempt.submitted_at else None
                     ),
                     "is_final_score": True,
                 }
