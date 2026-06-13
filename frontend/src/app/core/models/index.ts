@@ -78,6 +78,7 @@ export interface Exam {
   require_attempt_video: boolean;
   max_attempts: number;
   attempt_policy: 'flexible' | 'sequential';
+  proctoring_sensitivity: number;
   question_bank_id: string;
   has_attempts?: boolean;
 }

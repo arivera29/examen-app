@@ -72,4 +72,4 @@ class TestComputeAttemptFraudScore:
             fraud_score=1.4,
         )
 
-        assert compute_attempt_fraud_score(attempt, []) == 1.0
+        assert compute_attempt_fraud_score(attempt, [], sensitivity=0.4) == 1.0

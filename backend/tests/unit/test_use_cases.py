@@ -1065,19 +1065,42 @@ class TestDeleteInviteeExamResultsUseCase:
 
 
 class TestProctoringAnalysisUseCase:
+    def _build_use_case(self, attempt, exam, proctoring_service):
+        attempt_repo = MagicMock()
+        attempt_repo.get_by_id.return_value = attempt
+        exam_repo = MagicMock()
+        exam_repo.get_by_id.return_value = exam
+        proctoring_repo = MagicMock()
+        proctoring_repo.create.side_effect = lambda event: event
+        return ProctoringAnalysisUseCase(
+            attempt_repo,
+            exam_repo,
+            proctoring_repo,
+            proctoring_service,
+        ), attempt_repo
+
     def test_fraud_detected(self):
         attempt_id = uuid4()
+        exam_id = uuid4()
         attempt = ExamAttempt(
             id=attempt_id,
             invitation_id=uuid4(),
-            exam_id=uuid4(),
+            exam_id=exam_id,
             status=AttemptStatus.IN_PROGRESS,
         )
-
-        attempt_repo = MagicMock()
-        attempt_repo.get_by_id.return_value = attempt
-        proctoring_repo = MagicMock()
-        proctoring_repo.create.side_effect = lambda e: e
+        exam = Exam(
+            title="Exam",
+            description="",
+            owner_id=uuid4(),
+            question_bank_id=uuid4(),
+            mode=ExamMode.REAL,
+            total_score=5,
+            question_count=1,
+            closes_at=FUTURE_CLOSES_AT,
+            random_selection=True,
+            proctoring_sensitivity=0.5,
+            id=exam_id,
+        )
 
         proctoring_service = MagicMock()
         proctoring_service.analyze_frame.return_value = ProctoringAnalysisResult(
@@ -1088,41 +1111,88 @@ class TestProctoringAnalysisUseCase:
             details={},
         )
 
-        use_case = ProctoringAnalysisUseCase(attempt_repo, proctoring_repo, proctoring_service)
+        use_case, attempt_repo = self._build_use_case(attempt, exam, proctoring_service)
         event = use_case.execute(attempt_id, b"frame_data", [])
 
         assert event is not None
         assert attempt.fraud_score == 0.8
         attempt_repo.update.assert_called()
 
-    def test_fraud_score_uses_max_confidence_not_cumulative(self):
+    def test_low_sensitivity_ignores_minor_signals(self):
         attempt_id = uuid4()
+        exam_id = uuid4()
         attempt = ExamAttempt(
             id=attempt_id,
             invitation_id=uuid4(),
-            exam_id=uuid4(),
+            exam_id=exam_id,
+            status=AttemptStatus.IN_PROGRESS,
+        )
+        exam = Exam(
+            title="Exam",
+            description="",
+            owner_id=uuid4(),
+            question_bank_id=uuid4(),
+            mode=ExamMode.REAL,
+            total_score=5,
+            question_count=1,
+            closes_at=FUTURE_CLOSES_AT,
+            random_selection=True,
+            proctoring_sensitivity=0.3,
+            id=exam_id,
+        )
+
+        proctoring_service = MagicMock()
+        proctoring_service.analyze_frame.return_value = ProctoringAnalysisResult(
+            fraud_detected=True,
+            fraud_score=0.75,
+            event_type="eye_movement",
+            confidence=0.75,
+            details={},
+        )
+
+        use_case, attempt_repo = self._build_use_case(attempt, exam, proctoring_service)
+        event = use_case.execute(attempt_id, b"frame_data", [])
+
+        assert event is None
+        attempt_repo.update.assert_not_called()
+
+    def test_fraud_score_uses_max_confidence_not_cumulative(self):
+        attempt_id = uuid4()
+        exam_id = uuid4()
+        attempt = ExamAttempt(
+            id=attempt_id,
+            invitation_id=uuid4(),
+            exam_id=exam_id,
             status=AttemptStatus.IN_PROGRESS,
             fraud_score=0.3,
         )
-
-        attempt_repo = MagicMock()
-        attempt_repo.get_by_id.return_value = attempt
-        proctoring_repo = MagicMock()
-        proctoring_repo.create.side_effect = lambda e: e
+        exam = Exam(
+            title="Exam",
+            description="",
+            owner_id=uuid4(),
+            question_bank_id=uuid4(),
+            mode=ExamMode.REAL,
+            total_score=5,
+            question_count=1,
+            closes_at=FUTURE_CLOSES_AT,
+            random_selection=True,
+            proctoring_sensitivity=0.5,
+            id=exam_id,
+        )
 
         proctoring_service = MagicMock()
         proctoring_service.analyze_frame.return_value = ProctoringAnalysisResult(
             fraud_detected=True,
             fraud_score=0.8,
             event_type="eye_movement",
-            confidence=0.55,
+            confidence=0.75,
             details={},
         )
 
-        use_case = ProctoringAnalysisUseCase(attempt_repo, proctoring_repo, proctoring_service)
+        use_case, _attempt_repo = self._build_use_case(attempt, exam, proctoring_service)
         use_case.execute(attempt_id, b"frame_data", [])
 
-        assert attempt.fraud_score == 0.55
+        assert attempt.fraud_score == 0.75
 
 
 class TestSubmitExamUseCase:

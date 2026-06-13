@@ -1252,6 +1252,7 @@ async def analyze_proctoring(
     events = json.loads(mouse_events)
     use_case = ProctoringAnalysisUseCase(
         SQLAlchemyAttemptRepository(db),
+        SQLAlchemyExamRepository(db),
         SQLAlchemyProctoringRepository(db),
         MLProctoringService(),
         settings.proctoring_fraud_threshold,
@@ -1352,6 +1353,7 @@ def _exam_to_response(exam, attempt_repo: SQLAlchemyAttemptRepository | None = N
         require_attempt_video=exam.require_attempt_video,
         max_attempts=exam.max_attempts,
         attempt_policy=exam.attempt_policy,
+        proctoring_sensitivity=exam.proctoring_sensitivity,
         question_bank_id=exam.question_bank_id,
         has_attempts=has_attempts,
     )

@@ -77,6 +77,19 @@
         Grabar video del intento (se envía al finalizar el examen)
       </mat-checkbox>
 
+      <div class="sensitivity-field">
+        <div class="sensitivity-header">
+          <span>Sensibilidad de detección de fraude</span>
+          <strong>{{ sensitivityLabel(form.get('proctoring_sensitivity')?.value) }}</strong>
+        </div>
+        <mat-slider min="1" max="10" step="1" discrete showTickMarks>
+          <input matSliderThumb formControlName="proctoring_sensitivity" />
+        </mat-slider>
+        <p class="hint">
+          Valores bajos reducen alertas y el porcentaje de fraude reportado. Valores altos detectan más comportamientos sospechosos.
+        </p>
+      </div>
+
       <div class="actions">
         <button mat-button type="button" (click)="cancelForm()">Cancelar</button>
         <button mat-flat-button color="primary" type="submit">
@@ -103,6 +116,9 @@
           @if (exam.max_attempts > 1) {
             <span class="badge badge-attempts-config">{{ exam.max_attempts }} intentos</span>
           }
+          <span class="badge badge-sensitivity">
+            Fraude: {{ sensitivityLabel((exam.proctoring_sensitivity ?? 0.4) * 10) }}
+          </span>
           @if (exam.has_attempts) {
             <span class="badge badge-attempts">Con intentos</span>
           }

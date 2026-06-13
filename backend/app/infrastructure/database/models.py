@@ -127,6 +127,7 @@ class ExamModel(Base):
     require_attempt_video = Column(Boolean, default=False)
     max_attempts = Column(Integer, default=1, nullable=False)
     attempt_policy = Column(String(20), default=AttemptPolicy.FLEXIBLE.value, nullable=False)
+    proctoring_sensitivity = Column(Float, default=0.4, nullable=False)
     selected_question_ids = Column(JSON, default=list)
     question_configs = Column(JSON, default=list)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -260,6 +261,13 @@ def _apply_schema_updates():
                     text(
                         "ALTER TABLE exams ADD COLUMN require_attempt_video "
                         "BOOLEAN NOT NULL DEFAULT FALSE"
+                    )
+                )
+            if "proctoring_sensitivity" not in exam_columns:
+                connection.execute(
+                    text(
+                        "ALTER TABLE exams ADD COLUMN proctoring_sensitivity "
+                        "DOUBLE PRECISION NOT NULL DEFAULT 0.4"
                     )
                 )
 

@@ -11,6 +11,7 @@ from app.application.attempt_access import (
     resolve_attempt_start,
 )
 from app.application.attempt_fraud import compute_attempt_fraud_score, resolve_final_attempt
+from app.application.proctoring_sensitivity import scale_fraud_confidence, should_flag_fraud
 from app.application.attempt_questions import (
     assign_attempt_questions,
     get_attempt_question_configs,
@@ -634,6 +635,7 @@ class CreateExamUseCase:
             require_attempt_video=exam_data.get("require_attempt_video", False),
             max_attempts=exam_data.get("max_attempts", 1),
             attempt_policy=exam_data.get("attempt_policy", AttemptPolicy.FLEXIBLE),
+            proctoring_sensitivity=exam_data.get("proctoring_sensitivity", 0.4),
             selected_question_ids=[q.id for q in selected],
             question_configs=configs,
         )
@@ -711,6 +713,7 @@ class UpdateExamUseCase:
         exam.require_attempt_video = exam_data.get("require_attempt_video", False)
         exam.max_attempts = exam_data.get("max_attempts", 1)
         exam.attempt_policy = exam_data.get("attempt_policy", AttemptPolicy.FLEXIBLE)
+        exam.proctoring_sensitivity = exam_data.get("proctoring_sensitivity", exam.proctoring_sensitivity)
         exam.selected_question_ids = [q.id for q in selected]
         exam.question_configs = configs
         return self._exam_repo.update(exam)
@@ -1393,11 +1396,13 @@ class ProctoringAnalysisUseCase:
     def __init__(
         self,
         attempt_repo: AttemptRepository,
+        exam_repo: ExamRepository,
         proctoring_repo: ProctoringRepository,
         proctoring_service: ProctoringService,
         fraud_threshold: float = 0.7,
     ):
         self._attempt_repo = attempt_repo
+        self._exam_repo = exam_repo
         self._proctoring_repo = proctoring_repo
         self._proctoring_service = proctoring_service
         self._fraud_threshold = fraud_threshold
@@ -1410,19 +1415,29 @@ class ProctoringAnalysisUseCase:
             raise ValidationError("Attempt not in progress")
 
         result = self._proctoring_service.analyze_frame(frame_data, mouse_events)
+        if not result.fraud_detected:
+            return None
 
-        if result.fraud_detected:
-            event = ProctoringEvent(
-                attempt_id=attempt_id,
-                event_type=ProctoringEventType(result.event_type),
-                confidence=result.confidence,
-                metadata=result.details,
-            )
-            event = self._proctoring_repo.create(event)
-            attempt.fraud_score = min(1.0, max(attempt.fraud_score, result.confidence))
-            self._attempt_repo.update(attempt)
-            return event
-        return None
+        exam = self._exam_repo.get_by_id(attempt.exam_id)
+        sensitivity = exam.proctoring_sensitivity if exam else 0.4
+        if not should_flag_fraud(result.confidence, sensitivity, self._fraud_threshold):
+            return None
+
+        scaled_confidence = scale_fraud_confidence(result.confidence, sensitivity)
+        event = ProctoringEvent(
+            attempt_id=attempt_id,
+            event_type=ProctoringEventType(result.event_type),
+            confidence=scaled_confidence,
+            metadata={
+                **result.details,
+                "raw_confidence": result.confidence,
+                "proctoring_sensitivity": sensitivity,
+            },
+        )
+        event = self._proctoring_repo.create(event)
+        attempt.fraud_score = min(1.0, max(attempt.fraud_score, scaled_confidence))
+        self._attempt_repo.update(attempt)
+        return event
 
 
 MAX_PROGRESS_SNAPSHOTS = 5
@@ -1537,7 +1552,11 @@ class GetExamReportUseCase:
             correct_answers_count = answer_stats["correct_count"]
             incorrect_answers_count = answer_stats["incorrect_count"]
             answers_count = answer_stats["answered_count"]
-            fraud_score = compute_attempt_fraud_score(report_attempt, events)
+            fraud_score = compute_attempt_fraud_score(
+                report_attempt,
+                events,
+                exam.proctoring_sensitivity,
+            )
             if report_attempt.status == AttemptStatus.SUBMITTED and report_attempt.score is not None:
                 final_scores.append(report_attempt.score)
                 completed_correct_counts.append(correct_answers_count)

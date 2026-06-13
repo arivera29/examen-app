@@ -11,6 +11,7 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatIconModule } from '@angular/material/icon';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
+import { MatSliderModule } from '@angular/material/slider';
 import { ApiService } from '../../core/services/api.service';
 import { Exam, QuestionBank } from '../../core/models';
 import { DeleteExamDialogComponent } from './delete-exam-dialog.component';
@@ -31,6 +32,7 @@ import { DeleteExamDialogComponent } from './delete-exam-dialog.component';
     MatIconModule,
     MatTooltipModule,
     MatDialogModule,
+    MatSliderModule,
   ],
   templateUrl: './exams.component.html',
   styleUrl: './exams.component.scss',
@@ -59,6 +61,7 @@ export class ExamsComponent implements OnInit {
     require_attempt_video: [false],
     max_attempts: [1, [Validators.required, Validators.min(1)]],
     attempt_policy: ['flexible', Validators.required],
+    proctoring_sensitivity: [4, [Validators.required, Validators.min(1), Validators.max(10)]],
   });
 
   defaultClosesAtLocal(): string {
@@ -75,6 +78,15 @@ export class ExamsComponent implements OnInit {
 
   formatClosesAt(iso: string): string {
     return new Date(iso).toLocaleString();
+  }
+
+  sensitivityLabel(value: number | null | undefined): string {
+    const level = Number(value ?? 4);
+    if (level <= 2) return 'Muy baja';
+    if (level <= 4) return 'Baja';
+    if (level <= 6) return 'Media';
+    if (level <= 8) return 'Alta';
+    return 'Muy alta';
   }
 
   ngOnInit(): void {
@@ -113,6 +125,7 @@ export class ExamsComponent implements OnInit {
       require_attempt_video: false,
       max_attempts: 1,
       attempt_policy: 'flexible',
+      proctoring_sensitivity: 4,
     });
     this.form.enable();
     this.showForm = true;
@@ -133,6 +146,7 @@ export class ExamsComponent implements OnInit {
       require_attempt_video: exam.require_attempt_video,
       max_attempts: exam.max_attempts,
       attempt_policy: exam.attempt_policy,
+      proctoring_sensitivity: Math.round((exam.proctoring_sensitivity ?? 0.4) * 10),
     });
     if (exam.has_attempts) {
       this.form.get('question_bank_id')?.disable();
@@ -145,6 +159,7 @@ export class ExamsComponent implements OnInit {
       this.form.get('require_attempt_video')?.disable();
       this.form.get('max_attempts')?.disable();
       this.form.get('attempt_policy')?.disable();
+      this.form.get('proctoring_sensitivity')?.disable();
     } else {
       this.form.enable();
     }
@@ -174,6 +189,7 @@ export class ExamsComponent implements OnInit {
       require_attempt_video: Boolean(raw.require_attempt_video),
       max_attempts: Number(raw.max_attempts),
       attempt_policy: String(raw.attempt_policy ?? 'flexible'),
+      proctoring_sensitivity: Number(raw.proctoring_sensitivity) / 10,
       selected_question_ids: [] as string[],
     };
 

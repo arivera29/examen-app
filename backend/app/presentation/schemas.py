@@ -95,6 +95,7 @@ class CreateExamRequest(BaseModel):
     require_attempt_video: bool = False
     max_attempts: int = Field(default=1, ge=1)
     attempt_policy: AttemptPolicy = AttemptPolicy.FLEXIBLE
+    proctoring_sensitivity: float = Field(default=0.4, ge=0.1, le=1.0)
     selected_question_ids: list[UUID] = []
 
 
@@ -198,6 +199,7 @@ class ExamResponse(BaseModel):
     require_attempt_video: bool
     max_attempts: int
     attempt_policy: AttemptPolicy
+    proctoring_sensitivity: float
     question_bank_id: UUID
     has_attempts: bool = False
 

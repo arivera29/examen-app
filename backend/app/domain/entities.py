@@ -92,6 +92,7 @@ class Exam:
     require_attempt_video: bool = False
     max_attempts: int = 1
     attempt_policy: AttemptPolicy = AttemptPolicy.FLEXIBLE
+    proctoring_sensitivity: float = 0.4
     id: UUID = field(default_factory=uuid4)
     status: ExamStatus = ExamStatus.DRAFT
     selected_question_ids: list[UUID] = field(default_factory=list)

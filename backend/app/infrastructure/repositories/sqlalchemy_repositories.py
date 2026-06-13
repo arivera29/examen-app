@@ -133,6 +133,7 @@ def _exam_to_entity(model: ExamModel) -> Exam:
         require_attempt_video=model.require_attempt_video,
         max_attempts=model.max_attempts,
         attempt_policy=AttemptPolicy(model.attempt_policy),
+        proctoring_sensitivity=model.proctoring_sensitivity,
         selected_question_ids=selected_ids,
         question_configs=configs,
         created_at=model.created_at,
@@ -451,6 +452,7 @@ class SQLAlchemyExamRepository(ExamRepository):
             require_attempt_video=exam.require_attempt_video,
             max_attempts=exam.max_attempts,
             attempt_policy=exam.attempt_policy.value,
+            proctoring_sensitivity=exam.proctoring_sensitivity,
             selected_question_ids=[str(i) for i in exam.selected_question_ids],
             question_configs=[
                 {
@@ -504,6 +506,7 @@ class SQLAlchemyExamRepository(ExamRepository):
         model.require_attempt_video = exam.require_attempt_video
         model.max_attempts = exam.max_attempts
         model.attempt_policy = exam.attempt_policy.value
+        model.proctoring_sensitivity = exam.proctoring_sensitivity
         model.selected_question_ids = [str(i) for i in exam.selected_question_ids]
         model.question_configs = [
             {
