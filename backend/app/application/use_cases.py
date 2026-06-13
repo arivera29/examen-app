@@ -1053,6 +1053,7 @@ class StartExamAttemptUseCase:
             raise ValidationError("No se pudo iniciar el examen")
 
         invitation.status = InvitationStatus.STARTED
+        invitation.decision_deadline_at = None
         self._invitation_repo.update(invitation)
         return attempt
 
@@ -1235,8 +1236,12 @@ class SubmitExamUseCase:
             )
             if exam and has_exhausted_attempts(exam, email_attempts):
                 invitation.status = InvitationStatus.COMPLETED
+                invitation.decision_deadline_at = None
             else:
                 invitation.status = InvitationStatus.STARTED
+                from app.application.attempt_decision import build_decision_deadline
+
+                invitation.decision_deadline_at = build_decision_deadline()
             self._invitation_repo.update(invitation)
 
         return attempt
@@ -1336,6 +1341,7 @@ class FinishExamEarlyUseCase:
 
         last_attempt = max(finished, key=lambda attempt: attempt.attempt_number)
         invitation.status = InvitationStatus.COMPLETED
+        invitation.decision_deadline_at = None
         self._invitation_repo.update(invitation)
 
         return {
@@ -1343,6 +1349,42 @@ class FinishExamEarlyUseCase:
             "attempt_number": last_attempt.attempt_number,
             "exam_finalized": True,
         }
+
+
+class PrepareNextAttemptUseCase:
+    def __init__(
+        self,
+        invitation_repo: InvitationRepository,
+        attempt_repo: AttemptRepository,
+        exam_repo: ExamRepository,
+    ):
+        self._invitation_repo = invitation_repo
+        self._attempt_repo = attempt_repo
+        self._exam_repo = exam_repo
+
+    def execute(self, token: str) -> dict:
+        invitation = self._invitation_repo.get_by_token(token)
+        if not invitation:
+            raise NotFoundError("Invalid invitation token")
+        if invitation.status == InvitationStatus.COMPLETED:
+            raise ValidationError("El examen ya fue finalizado")
+
+        exam = self._exam_repo.get_by_id(invitation.exam_id)
+        email_attempts = self._attempt_repo.list_by_email(
+            invitation.exam_id, invitation.invitee_email
+        )
+        if exam and has_exhausted_attempts(exam, email_attempts):
+            raise ValidationError("Agotó los intentos disponibles para este examen")
+        if get_in_progress_attempt(email_attempts):
+            raise ValidationError("Ya hay un intento en progreso")
+
+        finished = [attempt for attempt in email_attempts if is_finished_attempt(attempt)]
+        if not finished:
+            raise ValidationError("Debe completar al menos un intento antes de continuar")
+
+        invitation.decision_deadline_at = None
+        self._invitation_repo.update(invitation)
+        return {"prepared": True}
 
 
 class ProctoringAnalysisUseCase:

@@ -146,6 +146,7 @@ class ExamInvitationModel(Base):
     token = Column(String(255), unique=True, nullable=False, index=True)
     status = Column(Enum(InvitationStatus), default=InvitationStatus.PENDING)
     sent_at = Column(DateTime(timezone=True), nullable=True)
+    decision_deadline_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     exam = relationship("ExamModel", back_populates="invitations")
@@ -317,3 +318,16 @@ def _apply_schema_updates():
                     "DROP CONSTRAINT IF EXISTS exam_attempts_invitation_id_key"
                 )
             )
+
+    if "exam_invitations" in table_names:
+        invitation_columns = {
+            column["name"] for column in inspector.get_columns("exam_invitations")
+        }
+        with engine.begin() as connection:
+            if "decision_deadline_at" not in invitation_columns:
+                connection.execute(
+                    text(
+                        "ALTER TABLE exam_invitations "
+                        "ADD COLUMN decision_deadline_at TIMESTAMP WITH TIME ZONE"
+                    )
+                )

@@ -107,6 +107,7 @@ class ExamInvitation:
     token: str = field(default_factory=lambda: str(uuid4()))
     status: InvitationStatus = InvitationStatus.PENDING
     sent_at: Optional[datetime] = None
+    decision_deadline_at: Optional[datetime] = None
     created_at: datetime = field(default_factory=datetime.utcnow)
 
 

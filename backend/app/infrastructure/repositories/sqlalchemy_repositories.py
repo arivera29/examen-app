@@ -575,6 +575,7 @@ class SQLAlchemyInvitationRepository(InvitationRepository):
             raise ValueError("Invitation not found")
         model.status = invitation.status
         model.sent_at = invitation.sent_at
+        model.decision_deadline_at = invitation.decision_deadline_at
         self._session.commit()
         self._session.refresh(model)
         return self._to_entity(model)
@@ -596,6 +597,7 @@ class SQLAlchemyInvitationRepository(InvitationRepository):
             token=model.token,
             status=model.status,
             sent_at=model.sent_at,
+            decision_deadline_at=model.decision_deadline_at,
             created_at=model.created_at,
         )
 

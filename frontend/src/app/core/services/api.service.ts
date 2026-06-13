@@ -239,6 +239,13 @@ export class ApiService {
     );
   }
 
+  prepareNextAttempt(token: string): Observable<{ prepared: boolean }> {
+    return this.http.post<{ prepared: boolean }>(
+      `${this.baseUrl}/exam-session/${token}/prepare-next-attempt`,
+      {}
+    );
+  }
+
   reportTabSwitchViolation(token: string): Observable<{
     final_score: number | null;
     attempt_number: number | null;

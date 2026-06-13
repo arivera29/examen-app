@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
 from app.application.attempt_access import is_finished_attempt
-from app.domain.entities import Exam, ExamAttempt, ExamInvitation
+from app.domain.entities import ExamAttempt, ExamInvitation
 from app.domain.enums import InvitationStatus
 
 ATTEMPT_DECISION_TIMEOUT_SECONDS = 300
@@ -12,6 +12,13 @@ def get_last_finished_attempt(email_attempts: list[ExamAttempt]) -> ExamAttempt 
     if not finished:
         return None
     return max(finished, key=lambda attempt: attempt.attempt_number)
+
+
+def build_decision_deadline(from_time: datetime | None = None) -> datetime:
+    base = from_time or datetime.now(timezone.utc)
+    if base.tzinfo is None:
+        base = base.replace(tzinfo=timezone.utc)
+    return base + timedelta(seconds=ATTEMPT_DECISION_TIMEOUT_SECONDS)
 
 
 def pending_attempt_decision(
@@ -25,20 +32,15 @@ def pending_attempt_decision(
         return False
     if not can_finish_early and not can_start_new_attempt:
         return False
-    if not last_finished or not last_finished.submitted_at:
+    if not last_finished:
         return False
-    return True
+    return invitation.decision_deadline_at is not None
 
 
-def compute_decision_deadline(submitted_at: datetime) -> datetime:
-    if submitted_at.tzinfo is None:
-        submitted_at = submitted_at.replace(tzinfo=timezone.utc)
-    return submitted_at + timedelta(seconds=ATTEMPT_DECISION_TIMEOUT_SECONDS)
-
-
-def compute_decision_seconds_remaining(submitted_at: datetime | None) -> int | None:
-    if not submitted_at:
+def compute_decision_seconds_remaining(deadline: datetime | None) -> int | None:
+    if not deadline:
         return None
-    deadline = compute_decision_deadline(submitted_at)
+    if deadline.tzinfo is None:
+        deadline = deadline.replace(tzinfo=timezone.utc)
     now = datetime.now(timezone.utc)
     return max(0, int((deadline - now).total_seconds()))

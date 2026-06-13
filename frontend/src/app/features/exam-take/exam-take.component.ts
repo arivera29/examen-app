@@ -89,6 +89,7 @@ export class ExamTakeComponent implements OnInit, OnDestroy {
   examTerminatedForViolation = false;
   decisionSecondsRemaining: number | null = null;
   private preparingNewAttempt = false;
+  private sessionInfoLoadGeneration = 0;
   private tabViolationHandled = false;
 
   answers: Record<string, string[]> = {};
@@ -117,8 +118,13 @@ export class ExamTakeComponent implements OnInit, OnDestroy {
   }
 
   private loadSessionInfo(): void {
+    const generation = ++this.sessionInfoLoadGeneration;
     this.api.getExamSessionInfo(this.token).subscribe({
       next: (info) => {
+        if (generation !== this.sessionInfoLoadGeneration) {
+          return;
+        }
+
         this.inviteeEmail = String(info['invitee_email'] ?? '');
         const savedName = String(info['invitee_full_name'] ?? '').trim();
         if (savedName) {
@@ -134,20 +140,22 @@ export class ExamTakeComponent implements OnInit, OnDestroy {
         this.canStartNewAttempt = Boolean(info['can_start_new_attempt']);
         this.canFinishEarly = Boolean(info['can_finish_early']);
         this.requiresNextAttempt = Boolean(info['requires_next_attempt']);
-        this.examFinalized = Boolean(info['exam_finalized']);
         this.requireAttemptVideo = Boolean(info['require_attempt_video']);
         this.currentAttemptNumber = info['current_attempt_number']
           ? Number(info['current_attempt_number'])
           : null;
 
         if (this.preparingNewAttempt) {
-          this.preparingNewAttempt = false;
           this.examFinished = false;
           this.examStarted = false;
           this.examBlocked = false;
           this.pendingResume = false;
+          this.stopDecisionTimer();
+          this.decisionSecondsRemaining = null;
           return;
         }
+
+        this.examFinalized = Boolean(info['exam_finalized']);
 
         if (info['terminated_for_violation']) {
           this.examTerminatedForViolation = true;
@@ -188,6 +196,7 @@ export class ExamTakeComponent implements OnInit, OnDestroy {
   }
 
   prepareAnotherAttempt(): void {
+    this.sessionInfoLoadGeneration += 1;
     this.stopDecisionTimer();
     this.decisionSecondsRemaining = null;
     this.preparingNewAttempt = true;
@@ -205,7 +214,19 @@ export class ExamTakeComponent implements OnInit, OnDestroy {
     this.mediaStream = undefined;
     this.resetSnapshotPlan();
     this.stopVideoRecording(false);
-    this.loadSessionInfo();
+
+    this.api.prepareNextAttempt(this.token).subscribe({
+      next: () => {
+        this.loadSessionInfo();
+      },
+      error: (err) => {
+        this.preparingNewAttempt = false;
+        this.snackBar.open(err.error?.detail || 'No se pudo preparar el siguiente intento', 'Cerrar', {
+          duration: 5000,
+        });
+        this.loadSessionInfo();
+      },
+    });
   }
 
   finishExamEarly(auto = false): void {
@@ -385,6 +406,7 @@ export class ExamTakeComponent implements OnInit, OnDestroy {
   }
 
   private applySession(session: ExamSession): void {
+    this.preparingNewAttempt = false;
     this.session = session;
     this.remainingSeconds = session.remaining_seconds;
     this.examStarted = true;
@@ -671,22 +693,18 @@ export class ExamTakeComponent implements OnInit, OnDestroy {
       this.decisionSecondsRemaining = null;
       return;
     }
-    if (this.preparingNewAttempt || (!this.examFinished && this.examStarted)) {
+    if (this.preparingNewAttempt || !this.examFinished) {
       return;
     }
     this.syncDecisionTimer(info);
   }
 
   private applyPendingDecisionState(info: Record<string, unknown>): boolean {
-    const status = String(info['attempt_status'] ?? '');
-    const pending = Boolean(info['pending_decision']);
-    const awaitingDecision =
-      pending ||
-      ((status === 'submitted' || status === 'timed_out') &&
-        !info['exam_finalized'] &&
-        (Boolean(info['can_finish_early']) || Boolean(info['can_start_new_attempt'])));
+    if (this.preparingNewAttempt) {
+      return false;
+    }
 
-    if (!awaitingDecision) {
+    if (!Boolean(info['pending_decision'])) {
       return false;
     }
 
@@ -712,6 +730,12 @@ export class ExamTakeComponent implements OnInit, OnDestroy {
   }
 
   private syncDecisionTimer(info: Record<string, unknown>): void {
+    if (this.preparingNewAttempt || !this.examFinished) {
+      this.stopDecisionTimer();
+      this.decisionSecondsRemaining = null;
+      return;
+    }
+
     const pending = Boolean(info['pending_decision']);
     const remaining = info['decision_seconds_remaining'];
     if (pending && typeof remaining === 'number') {
@@ -730,11 +754,20 @@ export class ExamTakeComponent implements OnInit, OnDestroy {
 
   private startDecisionTimer(): void {
     this.stopDecisionTimer();
-    if (this.decisionSecondsRemaining == null || this.decisionSecondsRemaining <= 0) {
+    if (
+      this.preparingNewAttempt ||
+      !this.examFinished ||
+      this.decisionSecondsRemaining == null ||
+      this.decisionSecondsRemaining <= 0
+    ) {
       return;
     }
 
     this.decisionTimerInterval = setInterval(() => {
+      if (this.preparingNewAttempt || !this.examFinished) {
+        this.stopDecisionTimer();
+        return;
+      }
       if (this.decisionSecondsRemaining == null) {
         return;
       }

@@ -45,6 +45,7 @@ from app.application.use_cases import (
     ExportQuestionBankExcelUseCase,
     TerminateExamForTabSwitchUseCase,
     FinishExamEarlyUseCase,
+    PrepareNextAttemptUseCase,
     GetAttemptAnswersReportUseCase,
     GetExamReportUseCase,
     InviteToExamUseCase,
@@ -993,8 +994,10 @@ def get_exam_session(token: str, db: Session = Depends(get_db)):
     decision_seconds_remaining = None
     auto_finalized = False
     final_score = last_finished.score if last_finished else None
-    if pending_decision and last_finished and last_finished.submitted_at:
-        decision_seconds_remaining = compute_decision_seconds_remaining(last_finished.submitted_at)
+    if pending_decision and invitation.decision_deadline_at:
+        decision_seconds_remaining = compute_decision_seconds_remaining(
+            invitation.decision_deadline_at
+        )
         if decision_seconds_remaining == 0:
             finish_use_case = FinishExamEarlyUseCase(invitation_repo, attempt_repo)
             try:
@@ -1045,6 +1048,19 @@ def get_exam_session(token: str, db: Session = Depends(get_db)):
         ),
         "terminated_for_violation": terminated_for_violation,
     }
+
+
+@router.post("/exam-session/{token}/prepare-next-attempt")
+def prepare_next_attempt(token: str, db: Session = Depends(get_db)):
+    use_case = PrepareNextAttemptUseCase(
+        SQLAlchemyInvitationRepository(db),
+        SQLAlchemyAttemptRepository(db),
+        SQLAlchemyExamRepository(db),
+    )
+    try:
+        return use_case.execute(token)
+    except DomainError as e:
+        _handle_domain_error(e)
 
 
 @router.post("/exam-session/{token}/finish")
