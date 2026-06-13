@@ -90,7 +90,16 @@ export class ExamTakeComponent implements OnInit, OnDestroy {
   decisionSecondsRemaining: number | null = null;
   private preparingNewAttempt = false;
   private sessionInfoLoadGeneration = 0;
+  private refreshAttemptOptionsGeneration = 0;
   private tabViolationHandled = false;
+
+  get isPreparingNextAttempt(): boolean {
+    return this.preparingNewAttempt;
+  }
+
+  private get preparingStorageKey(): string {
+    return `exam-preparing:${this.token}`;
+  }
 
   answers: Record<string, string[]> = {};
   openAnswers: Record<string, string> = {};
@@ -111,10 +120,33 @@ export class ExamTakeComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     this.token = this.route.snapshot.paramMap.get('token')!;
+    this.restorePreparingState();
     this.loadSessionInfo();
     document.addEventListener('mousemove', this.onMouseMove);
     document.addEventListener('visibilitychange', this.onVisibilityChange);
     window.addEventListener('blur', this.onWindowBlur);
+  }
+
+  private restorePreparingState(): void {
+    if (sessionStorage.getItem(this.preparingStorageKey) !== '1') {
+      return;
+    }
+
+    this.preparingNewAttempt = true;
+    this.examFinished = false;
+    this.examStarted = false;
+    this.pendingResume = false;
+    this.stopDecisionTimer();
+    this.decisionSecondsRemaining = null;
+  }
+
+  private persistPreparingState(): void {
+    sessionStorage.setItem(this.preparingStorageKey, '1');
+  }
+
+  private clearPreparingState(): void {
+    this.preparingNewAttempt = false;
+    sessionStorage.removeItem(this.preparingStorageKey);
   }
 
   private loadSessionInfo(): void {
@@ -197,9 +229,11 @@ export class ExamTakeComponent implements OnInit, OnDestroy {
 
   prepareAnotherAttempt(): void {
     this.sessionInfoLoadGeneration += 1;
+    this.refreshAttemptOptionsGeneration += 1;
     this.stopDecisionTimer();
     this.decisionSecondsRemaining = null;
     this.preparingNewAttempt = true;
+    this.persistPreparingState();
     this.examFinished = false;
     this.examStarted = false;
     this.pendingResume = false;
@@ -215,18 +249,31 @@ export class ExamTakeComponent implements OnInit, OnDestroy {
     this.resetSnapshotPlan();
     this.stopVideoRecording(false);
 
+    if (this.currentAttemptNumber != null && this.canStartNewAttempt) {
+      this.currentAttemptNumber += 1;
+    }
+
     this.api.prepareNextAttempt(this.token).subscribe({
-      next: () => {
-        this.loadSessionInfo();
-      },
       error: (err) => {
-        this.preparingNewAttempt = false;
-        this.snackBar.open(err.error?.detail || 'No se pudo preparar el siguiente intento', 'Cerrar', {
-          duration: 5000,
-        });
-        this.loadSessionInfo();
+        const detail = err.error?.detail;
+        const message =
+          typeof detail === 'string'
+            ? detail
+            : 'No se pudo pausar el temporizador, pero puedes iniciar el siguiente intento.';
+        this.snackBar.open(message, 'Cerrar', { duration: 5000 });
       },
     });
+  }
+
+  cancelPrepareAnotherAttempt(): void {
+    this.sessionInfoLoadGeneration += 1;
+    this.clearPreparingState();
+    this.stopDecisionTimer();
+    this.decisionSecondsRemaining = null;
+    this.cameraReady = false;
+    this.stopCamera();
+    this.mediaStream = undefined;
+    this.loadSessionInfo();
   }
 
   finishExamEarly(auto = false): void {
@@ -406,7 +453,7 @@ export class ExamTakeComponent implements OnInit, OnDestroy {
   }
 
   private applySession(session: ExamSession): void {
-    this.preparingNewAttempt = false;
+    this.clearPreparingState();
     this.session = session;
     this.remainingSeconds = session.remaining_seconds;
     this.examStarted = true;
@@ -656,6 +703,10 @@ export class ExamTakeComponent implements OnInit, OnDestroy {
   }
 
   private async completeExamSubmission(score: number | null): Promise<void> {
+    if (this.preparingNewAttempt) {
+      return;
+    }
+
     this.examFinished = true;
     this.finalScore = score;
     this.examLockdown.disable();
@@ -674,7 +725,11 @@ export class ExamTakeComponent implements OnInit, OnDestroy {
   }
 
   private async refreshAttemptOptions(): Promise<void> {
+    const generation = ++this.refreshAttemptOptionsGeneration;
     const info = await firstValueFrom(this.api.getExamSessionInfo(this.token));
+    if (generation !== this.refreshAttemptOptionsGeneration || this.preparingNewAttempt) {
+      return;
+    }
     this.attemptsRemaining = Number(info['attempts_remaining'] ?? 0);
     this.canStartNewAttempt = Boolean(info['can_start_new_attempt']);
     this.canFinishEarly = Boolean(info['can_finish_early']);
@@ -789,6 +844,10 @@ export class ExamTakeComponent implements OnInit, OnDestroy {
   }
 
   private async tryRecoverSubmittedState(): Promise<boolean> {
+    if (this.preparingNewAttempt) {
+      return false;
+    }
+
     try {
       const info = await firstValueFrom(this.api.getExamSessionInfo(this.token));
       const status = String(info['attempt_status'] ?? '');

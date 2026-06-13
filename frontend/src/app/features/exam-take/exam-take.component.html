@@ -128,16 +128,23 @@
         <canvas #canvasElement hidden></canvas>
       </div>
 
-      @if (!cameraReady) {
-        <button mat-flat-button color="primary" (click)="enableCamera()">
-          <mat-icon>videocam</mat-icon> Habilitar cámara
-        </button>
-      } @else {
-        <button mat-flat-button color="accent" (click)="startExam()" [disabled]="!canStartExam">
-          <mat-icon>{{ pendingResume ? 'replay' : 'play_arrow' }}</mat-icon>
-          {{ pendingResume ? 'Continuar examen' : 'Iniciar examen' }}
-        </button>
-      }
+      <div class="setup-actions">
+        @if (!cameraReady) {
+          <button mat-flat-button color="primary" (click)="enableCamera()">
+            <mat-icon>videocam</mat-icon> Habilitar cámara
+          </button>
+        } @else {
+          <button mat-flat-button color="accent" (click)="startExam()" [disabled]="!canStartExam">
+            <mat-icon>{{ pendingResume ? 'replay' : 'play_arrow' }}</mat-icon>
+            {{ pendingResume ? 'Continuar examen' : 'Iniciar examen' }}
+          </button>
+        }
+        @if (isPreparingNextAttempt) {
+          <button mat-stroked-button type="button" (click)="cancelPrepareAnotherAttempt()">
+            Volver a opciones de intento
+          </button>
+        }
+      </div>
     </mat-card>
   } @else if (session) {
     <div class="exam-header">
