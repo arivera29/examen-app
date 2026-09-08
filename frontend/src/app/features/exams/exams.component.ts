@@ -58,10 +58,13 @@ export class ExamsComponent implements OnInit {
     closes_at: [this.defaultClosesAtLocal(), Validators.required],
     random_selection: [true],
     enforce_question_time: [false],
+    require_camera: [true],
     require_attempt_video: [false],
     max_attempts: [1, [Validators.required, Validators.min(1)]],
     attempt_policy: ['flexible', Validators.required],
     proctoring_sensitivity: [4, [Validators.required, Validators.min(1), Validators.max(10)]],
+    attempt_cooldown_enabled: [false],
+    attempt_cooldown_seconds: [60, [Validators.min(1)]],
   });
 
   defaultClosesAtLocal(): string {
@@ -87,6 +90,28 @@ export class ExamsComponent implements OnInit {
     if (level <= 6) return 'Media';
     if (level <= 8) return 'Alta';
     return 'Muy alta';
+  }
+
+  get showAttemptCooldownFields(): boolean {
+    return Number(this.form.get('max_attempts')?.value ?? 1) > 1;
+  }
+
+  get showCameraDependentFields(): boolean {
+    return Boolean(this.form.get('require_camera')?.value);
+  }
+
+  formatCooldownDuration(totalSeconds: number): string {
+    if (totalSeconds >= 3600) {
+      const hours = Math.floor(totalSeconds / 3600);
+      const minutes = Math.floor((totalSeconds % 3600) / 60);
+      return minutes > 0 ? `${hours} h ${minutes} min` : `${hours} h`;
+    }
+    if (totalSeconds >= 60) {
+      const minutes = Math.floor(totalSeconds / 60);
+      const seconds = totalSeconds % 60;
+      return seconds > 0 ? `${minutes} min ${seconds} s` : `${minutes} min`;
+    }
+    return `${totalSeconds} s`;
   }
 
   ngOnInit(): void {
@@ -122,10 +147,13 @@ export class ExamsComponent implements OnInit {
       closes_at: this.defaultClosesAtLocal(),
       random_selection: true,
       enforce_question_time: false,
+      require_camera: true,
       require_attempt_video: false,
       max_attempts: 1,
       attempt_policy: 'flexible',
       proctoring_sensitivity: 4,
+      attempt_cooldown_enabled: false,
+      attempt_cooldown_seconds: 60,
     });
     this.form.enable();
     this.showForm = true;
@@ -143,10 +171,13 @@ export class ExamsComponent implements OnInit {
       closes_at: this.toDatetimeLocal(exam.closes_at),
       random_selection: exam.random_selection,
       enforce_question_time: exam.enforce_question_time,
+      require_camera: exam.require_camera ?? true,
       require_attempt_video: exam.require_attempt_video,
       max_attempts: exam.max_attempts,
       attempt_policy: exam.attempt_policy,
       proctoring_sensitivity: Math.round((exam.proctoring_sensitivity ?? 0.4) * 10),
+      attempt_cooldown_enabled: exam.attempt_cooldown_enabled ?? false,
+      attempt_cooldown_seconds: exam.attempt_cooldown_seconds ?? 60,
     });
     if (exam.has_attempts) {
       this.form.get('question_bank_id')?.disable();
@@ -156,10 +187,13 @@ export class ExamsComponent implements OnInit {
       this.form.get('closes_at')?.disable();
       this.form.get('random_selection')?.disable();
       this.form.get('enforce_question_time')?.disable();
+      this.form.get('require_camera')?.disable();
       this.form.get('require_attempt_video')?.disable();
       this.form.get('max_attempts')?.disable();
       this.form.get('attempt_policy')?.disable();
       this.form.get('proctoring_sensitivity')?.disable();
+      this.form.get('attempt_cooldown_enabled')?.disable();
+      this.form.get('attempt_cooldown_seconds')?.disable();
     } else {
       this.form.enable();
     }
@@ -176,6 +210,19 @@ export class ExamsComponent implements OnInit {
     if (this.form.invalid) return;
 
     const raw = this.form.getRawValue();
+    if (Boolean(raw.attempt_cooldown_enabled) && Number(raw.max_attempts) < 2) {
+      this.snackBar.open('La espera entre intentos requiere al menos 2 intentos', 'Cerrar', {
+        duration: 4000,
+      });
+      return;
+    }
+    if (Boolean(raw.attempt_cooldown_enabled) && Number(raw.attempt_cooldown_seconds) < 1) {
+      this.snackBar.open('Indica los segundos de espera entre intentos', 'Cerrar', {
+        duration: 4000,
+      });
+      return;
+    }
+
     const data = {
       title: String(raw.title ?? '').trim(),
       description: String(raw.description ?? '').trim(),
@@ -186,10 +233,15 @@ export class ExamsComponent implements OnInit {
       closes_at: new Date(String(raw.closes_at)).toISOString(),
       random_selection: Boolean(raw.random_selection),
       enforce_question_time: Boolean(raw.enforce_question_time),
-      require_attempt_video: Boolean(raw.require_attempt_video),
+      require_camera: Boolean(raw.require_camera),
+      require_attempt_video: Boolean(raw.require_camera) && Boolean(raw.require_attempt_video),
       max_attempts: Number(raw.max_attempts),
       attempt_policy: String(raw.attempt_policy ?? 'flexible'),
       proctoring_sensitivity: Number(raw.proctoring_sensitivity) / 10,
+      attempt_cooldown_enabled: Boolean(raw.attempt_cooldown_enabled),
+      attempt_cooldown_seconds: Boolean(raw.attempt_cooldown_enabled)
+        ? Number(raw.attempt_cooldown_seconds)
+        : 0,
       selected_question_ids: [] as string[],
     };
 

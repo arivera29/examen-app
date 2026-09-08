@@ -92,10 +92,13 @@ class CreateExamRequest(BaseModel):
     closes_at: datetime
     random_selection: bool = True
     enforce_question_time: bool = False
+    require_camera: bool = True
     require_attempt_video: bool = False
     max_attempts: int = Field(default=1, ge=1)
     attempt_policy: AttemptPolicy = AttemptPolicy.FLEXIBLE
     proctoring_sensitivity: float = Field(default=0.4, ge=0.1, le=1.0)
+    attempt_cooldown_enabled: bool = False
+    attempt_cooldown_seconds: int = Field(default=0, ge=0)
     selected_question_ids: list[UUID] = []
 
 
@@ -196,10 +199,13 @@ class ExamResponse(BaseModel):
     closes_at: datetime
     random_selection: bool
     enforce_question_time: bool
+    require_camera: bool
     require_attempt_video: bool
     max_attempts: int
     attempt_policy: AttemptPolicy
     proctoring_sensitivity: float
+    attempt_cooldown_enabled: bool
+    attempt_cooldown_seconds: int
     question_bank_id: UUID
     has_attempts: bool = False
 

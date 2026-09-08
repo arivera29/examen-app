@@ -75,10 +75,13 @@ export interface Exam {
   closes_at: string;
   random_selection: boolean;
   enforce_question_time: boolean;
+  require_camera: boolean;
   require_attempt_video: boolean;
   max_attempts: number;
   attempt_policy: 'flexible' | 'sequential';
   proctoring_sensitivity: number;
+  attempt_cooldown_enabled: boolean;
+  attempt_cooldown_seconds: number;
   question_bank_id: string;
   has_attempts?: boolean;
 }

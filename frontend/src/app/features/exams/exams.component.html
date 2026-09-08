@@ -55,40 +55,70 @@
         </mat-form-field>
       </div>
 
-      <div class="row">
-        <mat-form-field appearance="outline">
-          <mat-label>Número de intentos</mat-label>
-          <input matInput type="number" formControlName="max_attempts" min="1" />
-        </mat-form-field>
-        <mat-form-field appearance="outline">
-          <mat-label>Política de intentos</mat-label>
-          <mat-select formControlName="attempt_policy">
-            <mat-option value="flexible">Libre (en cualquier momento antes del cierre)</mat-option>
-            <mat-option value="sequential">Secuencial (enviar cada intento antes del siguiente)</mat-option>
-          </mat-select>
-        </mat-form-field>
-      </div>
-
-      <mat-checkbox formControlName="random_selection">Selección aleatoria de preguntas</mat-checkbox>
-      <mat-checkbox formControlName="enforce_question_time">
-        Controlar tiempo por pregunta (sin volver atrás ni cambiar respuestas)
-      </mat-checkbox>
-      <mat-checkbox formControlName="require_attempt_video">
-        Grabar video del intento (se envía al finalizar el examen)
-      </mat-checkbox>
-
-      <div class="sensitivity-field">
-        <div class="sensitivity-header">
-          <span>Sensibilidad de detección de fraude</span>
-          <strong>{{ sensitivityLabel(form.get('proctoring_sensitivity')?.value) }}</strong>
+      <div class="attempt-settings">
+        <div class="row">
+          <mat-form-field appearance="outline">
+            <mat-label>Número de intentos</mat-label>
+            <input matInput type="number" formControlName="max_attempts" min="1" />
+          </mat-form-field>
+          <mat-form-field appearance="outline">
+            <mat-label>Política de intentos</mat-label>
+            <mat-select formControlName="attempt_policy">
+              <mat-option value="flexible">Libre (en cualquier momento antes del cierre)</mat-option>
+              <mat-option value="sequential">Secuencial (enviar cada intento antes del siguiente)</mat-option>
+            </mat-select>
+          </mat-form-field>
         </div>
-        <mat-slider min="1" max="10" step="1" discrete showTickMarks>
-          <input matSliderThumb formControlName="proctoring_sensitivity" />
-        </mat-slider>
-        <p class="hint">
-          Valores bajos reducen alertas y el porcentaje de fraude reportado. Valores altos detectan más comportamientos sospechosos.
-        </p>
+
+        @if (showAttemptCooldownFields) {
+          <div class="cooldown-options">
+            <mat-checkbox formControlName="attempt_cooldown_enabled">
+              Espera obligatoria entre intentos
+            </mat-checkbox>
+            @if (form.get('attempt_cooldown_enabled')?.value) {
+              <div class="cooldown-config">
+                <mat-form-field appearance="outline" class="cooldown-seconds-field">
+                  <mat-label>Segundos de espera</mat-label>
+                  <input matInput type="number" formControlName="attempt_cooldown_seconds" min="1" />
+                </mat-form-field>
+                <p class="cooldown-hint">
+                  Tiempo mínimo tras finalizar un intento antes de poder iniciar el siguiente.
+                </p>
+              </div>
+            }
+          </div>
+        }
       </div>
+
+      <div class="checkbox-group">
+        <mat-checkbox formControlName="random_selection">Selección aleatoria de preguntas</mat-checkbox>
+        <mat-checkbox formControlName="enforce_question_time">
+          Controlar tiempo por pregunta (sin volver atrás ni cambiar respuestas)
+        </mat-checkbox>
+        <mat-checkbox formControlName="require_camera">
+          Usar cámara durante el examen (proctoring, capturas y video)
+        </mat-checkbox>
+        @if (showCameraDependentFields) {
+          <mat-checkbox formControlName="require_attempt_video" class="nested-option">
+            Grabar video del intento (se envía al finalizar el examen)
+          </mat-checkbox>
+        }
+      </div>
+
+      @if (showCameraDependentFields) {
+        <div class="sensitivity-field">
+          <div class="sensitivity-header">
+            <span>Sensibilidad de detección de fraude</span>
+            <strong>{{ sensitivityLabel(form.get('proctoring_sensitivity')?.value) }}</strong>
+          </div>
+          <mat-slider min="1" max="10" step="1" discrete showTickMarks>
+            <input matSliderThumb formControlName="proctoring_sensitivity" />
+          </mat-slider>
+          <p class="hint">
+            Valores bajos reducen alertas y el porcentaje de fraude reportado. Valores altos detectan más comportamientos sospechosos.
+          </p>
+        </div>
+      }
 
       <div class="actions">
         <button mat-button type="button" (click)="cancelForm()">Cancelar</button>
@@ -110,15 +140,25 @@
           @if (exam.enforce_question_time) {
             <span class="badge badge-timed">Tiempo por pregunta</span>
           }
-          @if (exam.require_attempt_video) {
+          @if (exam.require_attempt_video && exam.require_camera !== false) {
             <span class="badge badge-video">Video del intento</span>
+          }
+          @if (exam.require_camera === false) {
+            <span class="badge badge-no-camera">Sin cámara</span>
           }
           @if (exam.max_attempts > 1) {
             <span class="badge badge-attempts-config">{{ exam.max_attempts }} intentos</span>
           }
-          <span class="badge badge-sensitivity">
-            Fraude: {{ sensitivityLabel((exam.proctoring_sensitivity ?? 0.4) * 10) }}
-          </span>
+          @if (exam.attempt_cooldown_enabled && exam.attempt_cooldown_seconds > 0) {
+            <span class="badge badge-cooldown">
+              Espera {{ formatCooldownDuration(exam.attempt_cooldown_seconds) }}
+            </span>
+          }
+          @if (exam.require_camera !== false) {
+            <span class="badge badge-sensitivity">
+              Fraude: {{ sensitivityLabel((exam.proctoring_sensitivity ?? 0.4) * 10) }}
+            </span>
+          }
           @if (exam.has_attempts) {
             <span class="badge badge-attempts">Con intentos</span>
           }

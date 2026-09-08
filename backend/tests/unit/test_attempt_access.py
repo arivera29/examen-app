@@ -1,8 +1,12 @@
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 import pytest
 
-from app.application.attempt_access import resolve_attempt_start
+from app.application.attempt_access import (
+    compute_attempt_cooldown_remaining_seconds,
+    resolve_attempt_start,
+)
 from app.domain.entities import Exam, ExamAttempt, ExamInvitation
 from app.domain.enums import AttemptPolicy, AttemptStatus, ExamMode
 
@@ -90,3 +94,56 @@ def test_resolve_attempt_start_allows_second_attempt():
 
     assert action == "create"
     assert next_number == 2
+
+
+def test_compute_attempt_cooldown_remaining_zero_when_disabled():
+    exam = _exam(max_attempts=3)
+    exam.attempt_cooldown_enabled = False
+    exam.attempt_cooldown_seconds = 60
+    finished = [
+        ExamAttempt(
+            invitation_id=uuid4(),
+            exam_id=exam.id,
+            status=AttemptStatus.SUBMITTED,
+            attempt_number=1,
+            submitted_at=datetime.now(timezone.utc),
+        )
+    ]
+
+    assert compute_attempt_cooldown_remaining_seconds(exam, finished) == 0
+
+
+def test_compute_attempt_cooldown_remaining_after_submission():
+    exam = _exam(max_attempts=3)
+    exam.attempt_cooldown_enabled = True
+    exam.attempt_cooldown_seconds = 60
+    now = datetime(2025, 6, 10, 12, 0, 0, tzinfo=timezone.utc)
+    finished = [
+        ExamAttempt(
+            invitation_id=uuid4(),
+            exam_id=exam.id,
+            status=AttemptStatus.SUBMITTED,
+            attempt_number=1,
+            submitted_at=now - timedelta(seconds=25),
+        )
+    ]
+
+    assert compute_attempt_cooldown_remaining_seconds(exam, finished, now=now) == 35
+
+
+def test_compute_attempt_cooldown_remaining_zero_when_elapsed():
+    exam = _exam(max_attempts=3)
+    exam.attempt_cooldown_enabled = True
+    exam.attempt_cooldown_seconds = 60
+    now = datetime(2025, 6, 10, 12, 0, 0, tzinfo=timezone.utc)
+    finished = [
+        ExamAttempt(
+            invitation_id=uuid4(),
+            exam_id=exam.id,
+            status=AttemptStatus.SUBMITTED,
+            attempt_number=1,
+            submitted_at=now - timedelta(seconds=90),
+        )
+    ]
+
+    assert compute_attempt_cooldown_remaining_seconds(exam, finished, now=now) == 0

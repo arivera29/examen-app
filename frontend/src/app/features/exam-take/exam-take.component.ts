@@ -83,11 +83,15 @@ export class ExamTakeComponent implements OnInit, OnDestroy {
   examTotalScore: number | null = null;
   examFinalized = false;
   requireAttemptVideo = false;
+  requireCamera = true;
   isSubmitting = false;
   isRecordingVideo = false;
   pendingResume = false;
   examTerminatedForViolation = false;
   decisionSecondsRemaining: number | null = null;
+  attemptCooldownEnabled = false;
+  attemptCooldownSeconds = 0;
+  attemptCooldownRemaining: number | null = null;
   private preparingNewAttempt = false;
   private sessionInfoLoadGeneration = 0;
   private refreshAttemptOptionsGeneration = 0;
@@ -109,6 +113,7 @@ export class ExamTakeComponent implements OnInit, OnDestroy {
   private timerInterval?: ReturnType<typeof setInterval>;
   private questionTimerInterval?: ReturnType<typeof setInterval>;
   private decisionTimerInterval?: ReturnType<typeof setInterval>;
+  private cooldownTimerInterval?: ReturnType<typeof setInterval>;
   private proctoringInterval?: ReturnType<typeof setInterval>;
   private mediaStream?: MediaStream;
   private mediaRecorder?: MediaRecorder;
@@ -173,6 +178,7 @@ export class ExamTakeComponent implements OnInit, OnDestroy {
         this.canFinishEarly = Boolean(info['can_finish_early']);
         this.requiresNextAttempt = Boolean(info['requires_next_attempt']);
         this.requireAttemptVideo = Boolean(info['require_attempt_video']);
+        this.requireCamera = info['require_camera'] !== false;
         this.currentAttemptNumber = info['current_attempt_number']
           ? Number(info['current_attempt_number'])
           : null;
@@ -184,6 +190,7 @@ export class ExamTakeComponent implements OnInit, OnDestroy {
           this.pendingResume = false;
           this.stopDecisionTimer();
           this.decisionSecondsRemaining = null;
+          this.syncAttemptCooldown(info);
           return;
         }
 
@@ -223,6 +230,8 @@ export class ExamTakeComponent implements OnInit, OnDestroy {
         ) {
           this.pendingResume = true;
         }
+
+        this.syncAttemptCooldown(info);
       },
     });
   }
@@ -308,7 +317,18 @@ export class ExamTakeComponent implements OnInit, OnDestroy {
   }
 
   formatDecisionTime(): string {
-    const total = this.decisionSecondsRemaining ?? 0;
+    return this.formatSeconds(this.decisionSecondsRemaining ?? 0);
+  }
+
+  formatCooldownTime(): string {
+    return this.formatSeconds(this.attemptCooldownRemaining ?? 0);
+  }
+
+  get isAttemptCooldownActive(): boolean {
+    return (this.attemptCooldownRemaining ?? 0) > 0;
+  }
+
+  private formatSeconds(total: number): string {
     const minutes = Math.floor(total / 60);
     const seconds = total % 60;
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
@@ -321,6 +341,7 @@ export class ExamTakeComponent implements OnInit, OnDestroy {
     this.stopTimer();
     this.stopQuestionTimer();
     this.stopDecisionTimer();
+    this.stopCooldownTimer();
     this.stopProctoring();
     this.stopCamera();
     document.removeEventListener('mousemove', this.onMouseMove);
@@ -419,7 +440,12 @@ export class ExamTakeComponent implements OnInit, OnDestroy {
   }
 
   get canStartExam(): boolean {
-    return this.cameraReady && this.inviteeFullName.trim().length >= 2;
+    const cameraOk = !this.requireCamera || this.cameraReady;
+    return (
+      cameraOk &&
+      this.inviteeFullName.trim().length >= 2 &&
+      !this.isAttemptCooldownActive
+    );
   }
 
   startExam(): void {
@@ -431,12 +457,14 @@ export class ExamTakeComponent implements OnInit, OnDestroy {
       this.snackBar.open('Ingresa tu nombre completo', 'Cerrar', { duration: 3000 });
       return;
     }
-    if (!this.cameraReady) {
+    if (this.requireCamera && !this.cameraReady) {
       this.snackBar.open('La cámara es obligatoria', 'Cerrar', { duration: 3000 });
       return;
     }
 
-    this.api.startExamSession(this.token, true, this.inviteeFullName).subscribe({
+    this.api
+      .startExamSession(this.token, this.requireCamera ? true : false, this.inviteeFullName)
+      .subscribe({
       next: (session) => {
         this.pendingResume = false;
         this.applySession(session);
@@ -455,6 +483,8 @@ export class ExamTakeComponent implements OnInit, OnDestroy {
   private applySession(session: ExamSession): void {
     this.clearPreparingState();
     this.session = session;
+    this.requireCamera = session.exam.require_camera !== false;
+    this.requireAttemptVideo = Boolean(session.exam.require_attempt_video);
     this.remainingSeconds = session.remaining_seconds;
     this.examStarted = true;
     this.currentAttemptNumber = session.attempt.attempt_number ?? this.currentAttemptNumber;
@@ -485,15 +515,17 @@ export class ExamTakeComponent implements OnInit, OnDestroy {
       this.startQuestionTimer();
     }
 
-    this.startProctoring();
     this.examLockdown.enable();
-    this.scheduleAttachStream('exam');
-    this.setupQuestionSnapshots(session.questions.length);
-    if (session.exam.require_attempt_video) {
-      this.startVideoRecording();
-    }
-    if (!session.resumed) {
-      setTimeout(() => this.captureSnapshot('start'), 500);
+    if (this.requireCamera) {
+      this.startProctoring();
+      this.scheduleAttachStream('exam');
+      this.setupQuestionSnapshots(session.questions.length);
+      if (session.exam.require_attempt_video) {
+        this.startVideoRecording();
+      }
+      if (!session.resumed) {
+        setTimeout(() => this.captureSnapshot('start'), 500);
+      }
     }
     this.onQuestionDisplayed(this.currentIndex);
     this.saveProgress();
@@ -547,7 +579,9 @@ export class ExamTakeComponent implements OnInit, OnDestroy {
   }
 
   get requiresAttemptVideo(): boolean {
-    return this.session?.exam.require_attempt_video ?? this.requireAttemptVideo;
+    const videoRequired =
+      this.session?.exam.require_attempt_video ?? this.requireAttemptVideo;
+    return this.requireCamera && Boolean(videoRequired);
   }
 
   get enforceQuestionTime(): boolean {
@@ -751,6 +785,7 @@ export class ExamTakeComponent implements OnInit, OnDestroy {
     if (this.preparingNewAttempt || !this.examFinished) {
       return;
     }
+    this.syncAttemptCooldown(info);
     this.syncDecisionTimer(info);
   }
 
@@ -780,8 +815,23 @@ export class ExamTakeComponent implements OnInit, OnDestroy {
       return true;
     }
 
+    this.syncAttemptCooldown(info);
     this.syncDecisionTimer(info);
     return true;
+  }
+
+  private syncAttemptCooldown(info: Record<string, unknown>): void {
+    this.attemptCooldownEnabled = Boolean(info['attempt_cooldown_enabled']);
+    this.attemptCooldownSeconds = Number(info['attempt_cooldown_seconds'] ?? 0);
+    const remaining = info['attempt_cooldown_remaining_seconds'];
+    if (typeof remaining === 'number' && remaining > 0) {
+      this.attemptCooldownRemaining = remaining;
+      this.startCooldownTimer();
+      return;
+    }
+
+    this.attemptCooldownRemaining = null;
+    this.stopCooldownTimer();
   }
 
   private syncDecisionTimer(info: Record<string, unknown>): void {
@@ -840,6 +890,52 @@ export class ExamTakeComponent implements OnInit, OnDestroy {
     if (this.decisionTimerInterval) {
       clearInterval(this.decisionTimerInterval);
       this.decisionTimerInterval = undefined;
+    }
+  }
+
+  private startCooldownTimer(): void {
+    this.stopCooldownTimer();
+    if (this.attemptCooldownRemaining == null || this.attemptCooldownRemaining <= 0) {
+      return;
+    }
+
+    this.cooldownTimerInterval = setInterval(() => {
+      if (this.attemptCooldownRemaining == null) {
+        return;
+      }
+      if (this.attemptCooldownRemaining <= 1) {
+        this.attemptCooldownRemaining = 0;
+        this.stopCooldownTimer();
+        void this.onAttemptCooldownFinished();
+        return;
+      }
+      this.attemptCooldownRemaining--;
+    }, 1000);
+  }
+
+  private stopCooldownTimer(): void {
+    if (this.cooldownTimerInterval) {
+      clearInterval(this.cooldownTimerInterval);
+      this.cooldownTimerInterval = undefined;
+    }
+  }
+
+  private async onAttemptCooldownFinished(): Promise<void> {
+    try {
+      if (this.examFinished && !this.examFinalized && !this.preparingNewAttempt) {
+        await this.refreshAttemptOptions();
+        return;
+      }
+
+      if (this.preparingNewAttempt) {
+        const info = await firstValueFrom(this.api.getExamSessionInfo(this.token));
+        this.canStartNewAttempt = Boolean(info['can_start_new_attempt']);
+        this.syncAttemptCooldown(info);
+      }
+    } catch {
+      if (this.attemptsRemaining > 0 && !this.examFinalized) {
+        this.canStartNewAttempt = true;
+      }
     }
   }
 
@@ -962,6 +1058,7 @@ export class ExamTakeComponent implements OnInit, OnDestroy {
   }
 
   private startProctoring(): void {
+    if (!this.requireCamera) return;
     this.proctoringInterval = setInterval(() => this.captureAndAnalyze(), 5000);
   }
 
@@ -1124,7 +1221,7 @@ export class ExamTakeComponent implements OnInit, OnDestroy {
   }
 
   private onQuestionDisplayed(questionIndex: number): void {
-    if (!this.examStarted || this.examFinished) return;
+    if (!this.requireCamera || !this.examStarted || this.examFinished) return;
     if (!this.snapshotQuestionIndices.has(questionIndex)) return;
     if (this.capturedSnapshotQuestions.has(questionIndex)) return;
 
@@ -1133,6 +1230,7 @@ export class ExamTakeComponent implements OnInit, OnDestroy {
   }
 
   private captureSnapshot(snapshotType: 'start' | 'progress'): void {
+    if (!this.requireCamera) return;
     const video = this.activeVideoElement;
     if (!this.session || !video || !this.canvasElement?.nativeElement) return;
 

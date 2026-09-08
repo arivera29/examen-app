@@ -45,6 +45,15 @@
   color: #3949ab;
 }
 
+.badge-no-camera {
+  background: #eceff1;
+  color: #546e7a;
+}
+
+.nested-option {
+  margin-left: 1.5rem;
+}
+
 .form-card {
   margin-bottom: 1rem;
   padding: 1rem;
@@ -70,6 +79,50 @@
   display: flex;
   gap: 1rem;
   flex-wrap: wrap;
+
+  mat-form-field {
+    flex: 1 1 220px;
+    min-width: 0;
+  }
+}
+
+.attempt-settings {
+  margin: 0.5rem 0 1rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  background: #fafafa;
+}
+
+.cooldown-options {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid #e8e8e8;
+}
+
+.cooldown-config {
+  margin-top: 0.5rem;
+  margin-left: 2rem;
+}
+
+.cooldown-seconds-field {
+  width: 160px;
+  max-width: 100%;
+}
+
+.cooldown-hint {
+  margin: 0.25rem 0 0;
+  max-width: 28rem;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  color: #666;
+}
+
+.checkbox-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-bottom: 0.5rem;
 }
 
 .badge {
@@ -88,6 +141,11 @@
 .badge-sensitivity {
   background: #f3e5f5;
   color: #6a1b9a;
+}
+
+.badge-cooldown {
+  background: #e0f2f1;
+  color: #00695c;
 }
 
 .sensitivity-field {

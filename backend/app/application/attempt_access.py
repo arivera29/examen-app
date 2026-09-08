@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from app.domain.entities import Exam, ExamAttempt, ExamInvitation
 from app.domain.enums import AttemptPolicy, AttemptStatus
 
@@ -46,3 +48,34 @@ def resolve_attempt_start(
 
 def has_exhausted_attempts(exam: Exam, email_attempts: list[ExamAttempt]) -> bool:
     return count_finished_attempts(email_attempts) >= exam.max_attempts
+
+
+def compute_attempt_cooldown_remaining_seconds(
+    exam: Exam,
+    email_attempts: list[ExamAttempt],
+    *,
+    now: datetime | None = None,
+) -> int:
+    if not exam.attempt_cooldown_enabled or exam.attempt_cooldown_seconds <= 0:
+        return 0
+    if exam.max_attempts <= 1:
+        return 0
+
+    finished = sorted(
+        [attempt for attempt in email_attempts if is_finished_attempt(attempt)],
+        key=lambda attempt: attempt.attempt_number,
+    )
+    if not finished:
+        return 0
+
+    last_finished = finished[-1]
+    if not last_finished.submitted_at:
+        return 0
+
+    reference = now or datetime.now(timezone.utc)
+    submitted_at = last_finished.submitted_at
+    if submitted_at.tzinfo is None:
+        submitted_at = submitted_at.replace(tzinfo=timezone.utc)
+
+    elapsed = (reference - submitted_at).total_seconds()
+    return max(0, int(exam.attempt_cooldown_seconds - elapsed))

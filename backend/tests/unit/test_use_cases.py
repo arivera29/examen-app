@@ -383,6 +383,45 @@ class TestCreateExamUseCase:
         assert len(exam.selected_question_ids) == 0
         assert exam.random_selection is True
 
+    def test_create_exam_rejects_cooldown_without_enough_attempts(self):
+        owner_id = uuid4()
+        bank_id = uuid4()
+        bank = QuestionBank(name="Bank", description="", owner_id=owner_id, id=bank_id)
+        questions = [
+            Question(
+                text=f"Q{i}",
+                question_type=QuestionType.SINGLE_CHOICE,
+                time_seconds=60,
+                owner_id=owner_id,
+                options=[QuestionOption(text="A", is_correct=True)],
+            )
+            for i in range(5)
+        ]
+
+        exam_repo = MagicMock()
+        bank_repo = MagicMock()
+        bank_repo.get_by_id.return_value = bank
+        question_repo = MagicMock()
+        question_repo.list_by_bank.return_value = questions
+
+        use_case = CreateExamUseCase(exam_repo, bank_repo, question_repo)
+        with pytest.raises(ValidationError, match="al menos 2 intentos"):
+            use_case.execute(
+                owner_id,
+                {
+                    "title": "Test Exam",
+                    "question_bank_id": bank_id,
+                    "mode": ExamMode.REAL,
+                    "total_score": 100,
+                    "question_count": 3,
+                    "closes_at": FUTURE_CLOSES_AT,
+                    "random_selection": True,
+                    "max_attempts": 1,
+                    "attempt_cooldown_enabled": True,
+                    "attempt_cooldown_seconds": 60,
+                },
+            )
+
 
 class TestSubmitAnswerUseCase:
     def test_submit_correct_answer(self):
@@ -718,6 +757,126 @@ class TestStartExamAttemptUseCase:
         use_case = StartExamAttemptUseCase(invitation_repo, attempt_repo, exam_repo, MagicMock())
         with pytest.raises(ValidationError, match="en progreso"):
             use_case.execute("token-2", camera_verified=True, full_name="Juan Pérez")
+
+    def test_blocks_second_attempt_during_cooldown(self):
+        exam_id = uuid4()
+        invitation = ExamInvitation(
+            exam_id=exam_id,
+            invitee_email="student@test.com",
+            token="token-cooldown",
+        )
+        invitation_repo = MagicMock()
+        invitation_repo.get_by_token.return_value = invitation
+        submitted_at = datetime.now(timezone.utc) - timedelta(seconds=10)
+        attempt_repo = MagicMock()
+        attempt_repo.list_by_email.return_value = [
+            ExamAttempt(
+                invitation_id=invitation.id,
+                exam_id=exam_id,
+                status=AttemptStatus.SUBMITTED,
+                attempt_number=1,
+                submitted_at=submitted_at,
+            )
+        ]
+        exam_repo = MagicMock()
+        exam_repo.get_by_id.return_value = Exam(
+            title="Exam",
+            description="",
+            owner_id=uuid4(),
+            question_bank_id=uuid4(),
+            mode=ExamMode.REAL,
+            total_score=100,
+            question_count=1,
+            closes_at=FUTURE_CLOSES_AT,
+            random_selection=True,
+            max_attempts=3,
+            attempt_cooldown_enabled=True,
+            attempt_cooldown_seconds=60,
+            id=exam_id,
+        )
+
+        use_case = StartExamAttemptUseCase(invitation_repo, attempt_repo, exam_repo, MagicMock())
+        with pytest.raises(ValidationError, match="Debe esperar"):
+            use_case.execute("token-cooldown", camera_verified=True, full_name="Juan Pérez")
+
+    def test_allows_start_without_camera_when_disabled(self):
+        exam_id = uuid4()
+        invitation = ExamInvitation(
+            exam_id=exam_id,
+            invitee_email="student@test.com",
+            token="token-no-camera",
+        )
+        invitation_repo = MagicMock()
+        invitation_repo.get_by_token.return_value = invitation
+        invitation_repo.update.side_effect = lambda inv: inv
+        attempt_repo = MagicMock()
+        attempt_repo.list_by_email.return_value = []
+        attempt_repo.create.side_effect = lambda attempt: attempt
+        exam_repo = MagicMock()
+        exam_repo.get_by_id.return_value = Exam(
+            title="Exam",
+            description="",
+            owner_id=uuid4(),
+            question_bank_id=uuid4(),
+            mode=ExamMode.REAL,
+            total_score=100,
+            question_count=1,
+            closes_at=FUTURE_CLOSES_AT,
+            random_selection=True,
+            max_attempts=1,
+            require_camera=False,
+            id=exam_id,
+        )
+        question_repo = MagicMock()
+        question_repo.list_by_bank.return_value = [
+            Question(
+                text="Q1",
+                question_type=QuestionType.SINGLE_CHOICE,
+                time_seconds=60,
+                owner_id=uuid4(),
+                options=[QuestionOption(text="A", is_correct=True)],
+            )
+        ]
+
+        use_case = StartExamAttemptUseCase(
+            invitation_repo, attempt_repo, exam_repo, question_repo
+        )
+        attempt = use_case.execute(
+            "token-no-camera", camera_verified=False, full_name="Juan Pérez"
+        )
+
+        assert attempt.camera_verified is False
+        attempt_repo.create.assert_called_once()
+
+    def test_blocks_start_without_camera_when_required(self):
+        exam_id = uuid4()
+        invitation = ExamInvitation(
+            exam_id=exam_id,
+            invitee_email="student@test.com",
+            token="token-camera",
+        )
+        invitation_repo = MagicMock()
+        invitation_repo.get_by_token.return_value = invitation
+        attempt_repo = MagicMock()
+        exam_repo = MagicMock()
+        exam_repo.get_by_id.return_value = Exam(
+            title="Exam",
+            description="",
+            owner_id=uuid4(),
+            question_bank_id=uuid4(),
+            mode=ExamMode.REAL,
+            total_score=100,
+            question_count=1,
+            closes_at=FUTURE_CLOSES_AT,
+            random_selection=True,
+            max_attempts=1,
+            require_camera=True,
+            id=exam_id,
+        )
+
+        use_case = StartExamAttemptUseCase(invitation_repo, attempt_repo, exam_repo, MagicMock())
+        with pytest.raises(ValidationError, match="Camera verification"):
+            use_case.execute("token-camera", camera_verified=False, full_name="Juan Pérez")
 
 
 class TestUpdateExamUseCase:
@@ -1117,6 +1276,37 @@ class TestProctoringAnalysisUseCase:
         assert event is not None
         assert attempt.fraud_score == 0.8
         attempt_repo.update.assert_called()
+
+    def test_skips_when_camera_disabled(self):
+        attempt_id = uuid4()
+        exam_id = uuid4()
+        attempt = ExamAttempt(
+            id=attempt_id,
+            invitation_id=uuid4(),
+            exam_id=exam_id,
+            status=AttemptStatus.IN_PROGRESS,
+        )
+        exam = Exam(
+            title="Exam",
+            description="",
+            owner_id=uuid4(),
+            question_bank_id=uuid4(),
+            mode=ExamMode.REAL,
+            total_score=5,
+            question_count=1,
+            closes_at=FUTURE_CLOSES_AT,
+            random_selection=True,
+            require_camera=False,
+            id=exam_id,
+        )
+        proctoring_service = MagicMock()
+        use_case, attempt_repo = self._build_use_case(attempt, exam, proctoring_service)
+
+        event = use_case.execute(attempt_id, b"frame_data", [])
+
+        assert event is None
+        proctoring_service.analyze_frame.assert_not_called()
+        attempt_repo.update.assert_not_called()
 
     def test_low_sensitivity_ignores_minor_signals(self):
         attempt_id = uuid4()
@@ -1640,37 +1830,101 @@ class TestGetExamReportUseCase:
 class TestSaveAttemptSnapshotUseCase:
     def test_saves_start_snapshot(self):
         attempt_id = uuid4()
+        exam_id = uuid4()
         attempt = ExamAttempt(
             id=attempt_id,
             invitation_id=uuid4(),
-            exam_id=uuid4(),
+            exam_id=exam_id,
             status=AttemptStatus.IN_PROGRESS,
+        )
+        exam = Exam(
+            title="Exam",
+            description="",
+            owner_id=uuid4(),
+            question_bank_id=uuid4(),
+            mode=ExamMode.REAL,
+            total_score=100,
+            question_count=1,
+            closes_at=FUTURE_CLOSES_AT,
+            random_selection=True,
+            require_camera=True,
+            id=exam_id,
         )
         attempt_repo = MagicMock()
         attempt_repo.get_by_id.return_value = attempt
+        exam_repo = MagicMock()
+        exam_repo.get_by_id.return_value = exam
         snapshot_repo = MagicMock()
         snapshot_repo.count_by_type.return_value = 0
         snapshot_repo.create.side_effect = lambda snapshot: snapshot
 
-        use_case = SaveAttemptSnapshotUseCase(attempt_repo, snapshot_repo)
+        use_case = SaveAttemptSnapshotUseCase(attempt_repo, exam_repo, snapshot_repo)
         result = use_case.execute(attempt_id, SnapshotType.START, "/uploads/start.jpg")
 
         assert result.image_url == "/uploads/start.jpg"
         snapshot_repo.create.assert_called_once()
 
-    def test_blocks_duplicate_start_snapshot(self):
+    def test_blocks_when_camera_disabled(self):
         attempt_id = uuid4()
+        exam_id = uuid4()
         attempt = ExamAttempt(
             id=attempt_id,
             invitation_id=uuid4(),
-            exam_id=uuid4(),
+            exam_id=exam_id,
             status=AttemptStatus.IN_PROGRESS,
+        )
+        exam = Exam(
+            title="Exam",
+            description="",
+            owner_id=uuid4(),
+            question_bank_id=uuid4(),
+            mode=ExamMode.REAL,
+            total_score=100,
+            question_count=1,
+            closes_at=FUTURE_CLOSES_AT,
+            random_selection=True,
+            require_camera=False,
+            id=exam_id,
         )
         attempt_repo = MagicMock()
         attempt_repo.get_by_id.return_value = attempt
+        exam_repo = MagicMock()
+        exam_repo.get_by_id.return_value = exam
+        snapshot_repo = MagicMock()
+
+        use_case = SaveAttemptSnapshotUseCase(attempt_repo, exam_repo, snapshot_repo)
+        with pytest.raises(ValidationError, match="no requiere cámara"):
+            use_case.execute(attempt_id, SnapshotType.START, "/uploads/start.jpg")
+
+    def test_blocks_duplicate_start_snapshot(self):
+        attempt_id = uuid4()
+        exam_id = uuid4()
+        attempt = ExamAttempt(
+            id=attempt_id,
+            invitation_id=uuid4(),
+            exam_id=exam_id,
+            status=AttemptStatus.IN_PROGRESS,
+        )
+        exam = Exam(
+            title="Exam",
+            description="",
+            owner_id=uuid4(),
+            question_bank_id=uuid4(),
+            mode=ExamMode.REAL,
+            total_score=100,
+            question_count=1,
+            closes_at=FUTURE_CLOSES_AT,
+            random_selection=True,
+            require_camera=True,
+            id=exam_id,
+        )
+        attempt_repo = MagicMock()
+        attempt_repo.get_by_id.return_value = attempt
+        exam_repo = MagicMock()
+        exam_repo.get_by_id.return_value = exam
         snapshot_repo = MagicMock()
         snapshot_repo.count_by_type.return_value = 1
 
-        use_case = SaveAttemptSnapshotUseCase(attempt_repo, snapshot_repo)
+        use_case = SaveAttemptSnapshotUseCase(attempt_repo, exam_repo, snapshot_repo)
         with pytest.raises(ValidationError, match="Start snapshot"):
             use_case.execute(attempt_id, SnapshotType.START, "/uploads/start.jpg")

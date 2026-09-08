@@ -89,10 +89,13 @@ class Exam:
     closes_at: datetime
     random_selection: bool
     enforce_question_time: bool = False
+    require_camera: bool = True
     require_attempt_video: bool = False
     max_attempts: int = 1
     attempt_policy: AttemptPolicy = AttemptPolicy.FLEXIBLE
     proctoring_sensitivity: float = 0.4
+    attempt_cooldown_enabled: bool = False
+    attempt_cooldown_seconds: int = 0
     id: UUID = field(default_factory=uuid4)
     status: ExamStatus = ExamStatus.DRAFT
     selected_question_ids: list[UUID] = field(default_factory=list)

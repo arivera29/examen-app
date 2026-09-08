@@ -5,6 +5,7 @@ from uuid import UUID
 
 from app.application.attempt_access import (
     count_finished_attempts,
+    compute_attempt_cooldown_remaining_seconds,
     get_in_progress_attempt,
     has_exhausted_attempts,
     is_finished_attempt,
@@ -576,6 +577,28 @@ class RestoreQuestionBankBackupUseCase:
         return created.id
 
 
+def _resolve_attempt_cooldown_settings(exam_data: dict) -> tuple[bool, int]:
+    enabled = bool(exam_data.get("attempt_cooldown_enabled", False))
+    seconds = int(exam_data.get("attempt_cooldown_seconds", 0) or 0)
+    max_attempts = int(exam_data.get("max_attempts", 1))
+
+    if not enabled:
+        return False, 0
+    if max_attempts < 2:
+        raise ValidationError("La espera entre intentos requiere al menos 2 intentos")
+    if seconds < 1:
+        raise ValidationError("Debe indicar los segundos de espera entre intentos")
+    return True, seconds
+
+
+def _resolve_camera_settings(exam_data: dict) -> tuple[bool, bool]:
+    require_camera = bool(exam_data.get("require_camera", True))
+    require_attempt_video = bool(exam_data.get("require_attempt_video", False))
+    if not require_camera:
+        require_attempt_video = False
+    return require_camera, require_attempt_video
+
+
 class CreateExamUseCase:
     def __init__(
         self,
@@ -621,6 +644,9 @@ class CreateExamUseCase:
         if closes_at <= datetime.now(timezone.utc):
             raise ValidationError("Close date must be in the future")
 
+        cooldown_enabled, cooldown_seconds = _resolve_attempt_cooldown_settings(exam_data)
+        require_camera, require_attempt_video = _resolve_camera_settings(exam_data)
+
         exam = Exam(
             title=exam_data["title"],
             description=exam_data.get("description", ""),
@@ -632,10 +658,13 @@ class CreateExamUseCase:
             closes_at=closes_at,
             random_selection=exam_data.get("random_selection", True),
             enforce_question_time=exam_data.get("enforce_question_time", False),
-            require_attempt_video=exam_data.get("require_attempt_video", False),
+            require_camera=require_camera,
+            require_attempt_video=require_attempt_video,
             max_attempts=exam_data.get("max_attempts", 1),
             attempt_policy=exam_data.get("attempt_policy", AttemptPolicy.FLEXIBLE),
             proctoring_sensitivity=exam_data.get("proctoring_sensitivity", 0.4),
+            attempt_cooldown_enabled=cooldown_enabled,
+            attempt_cooldown_seconds=cooldown_seconds,
             selected_question_ids=[q.id for q in selected],
             question_configs=configs,
         )
@@ -701,6 +730,9 @@ class UpdateExamUseCase:
         if closes_at <= datetime.now(timezone.utc):
             raise ValidationError("Close date must be in the future")
 
+        cooldown_enabled, cooldown_seconds = _resolve_attempt_cooldown_settings(exam_data)
+        require_camera, require_attempt_video = _resolve_camera_settings(exam_data)
+
         exam.title = exam_data["title"]
         exam.description = exam_data.get("description", "")
         exam.question_bank_id = bank.id
@@ -710,10 +742,13 @@ class UpdateExamUseCase:
         exam.closes_at = closes_at
         exam.random_selection = exam_data.get("random_selection", True)
         exam.enforce_question_time = exam_data.get("enforce_question_time", False)
-        exam.require_attempt_video = exam_data.get("require_attempt_video", False)
+        exam.require_camera = require_camera
+        exam.require_attempt_video = require_attempt_video
         exam.max_attempts = exam_data.get("max_attempts", 1)
         exam.attempt_policy = exam_data.get("attempt_policy", AttemptPolicy.FLEXIBLE)
         exam.proctoring_sensitivity = exam_data.get("proctoring_sensitivity", exam.proctoring_sensitivity)
+        exam.attempt_cooldown_enabled = cooldown_enabled
+        exam.attempt_cooldown_seconds = cooldown_seconds
         exam.selected_question_ids = [q.id for q in selected]
         exam.question_configs = configs
         return self._exam_repo.update(exam)
@@ -990,9 +1025,6 @@ class StartExamAttemptUseCase:
         self._question_repo = question_repo
 
     def execute(self, token: str, camera_verified: bool, full_name: str) -> ExamAttempt:
-        if not camera_verified:
-            raise ValidationError("Camera verification required")
-
         normalized_name = full_name.strip()
         if len(normalized_name) < 2:
             raise ValidationError("El nombre completo es obligatorio")
@@ -1009,6 +1041,9 @@ class StartExamAttemptUseCase:
         if is_exam_closed(exam):
             raise ValidationError("Exam has closed")
 
+        if exam.require_camera and not camera_verified:
+            raise ValidationError("Camera verification required")
+
         email_attempts = self._attempt_repo.list_by_email(
             invitation.exam_id, invitation.invitee_email
         )
@@ -1023,10 +1058,20 @@ class StartExamAttemptUseCase:
         if action == "blocked_sequence":
             raise ValidationError("Debe completar los intentos en orden secuencial")
 
+        if action == "create" and next_attempt_number is not None and next_attempt_number > 1:
+            cooldown_remaining = compute_attempt_cooldown_remaining_seconds(exam, email_attempts)
+            if cooldown_remaining > 0:
+                raise ValidationError(
+                    f"Debe esperar {cooldown_remaining} segundos antes de iniciar el siguiente intento"
+                )
+
+        camera_ok = bool(camera_verified) if exam.require_camera else False
+
         if action == "resume" and existing:
             existing.status = AttemptStatus.IN_PROGRESS
             existing.started_at = existing.started_at or datetime.now(timezone.utc)
-            existing.camera_verified = True
+            if exam.require_camera:
+                existing.camera_verified = True
             if not existing.invitee_full_name:
                 existing.invitee_full_name = normalized_name
             try:
@@ -1043,7 +1088,7 @@ class StartExamAttemptUseCase:
                 attempt_number=next_attempt_number,
                 invitee_full_name=normalized_name,
                 started_at=now,
-                camera_verified=True,
+                camera_verified=camera_ok,
                 current_question_index=0,
                 locked_question_ids=[],
                 current_question_started_at=now,
@@ -1213,6 +1258,7 @@ class SubmitExamUseCase:
         exam = self._exam_repo.get_by_id(attempt.exam_id)
         if (
             exam
+            and exam.require_camera
             and exam.require_attempt_video
             and not attempt.attempt_video_url
             and not skip_video_required
@@ -1414,12 +1460,15 @@ class ProctoringAnalysisUseCase:
         if not attempt or attempt.status != AttemptStatus.IN_PROGRESS:
             raise ValidationError("Attempt not in progress")
 
+        exam = self._exam_repo.get_by_id(attempt.exam_id)
+        if not exam or not exam.require_camera:
+            return None
+
         result = self._proctoring_service.analyze_frame(frame_data, mouse_events)
         if not result.fraud_detected:
             return None
 
-        exam = self._exam_repo.get_by_id(attempt.exam_id)
-        sensitivity = exam.proctoring_sensitivity if exam else 0.4
+        sensitivity = exam.proctoring_sensitivity
         if not should_flag_fraud(result.confidence, sensitivity, self._fraud_threshold):
             return None
 
@@ -1458,7 +1507,7 @@ class SaveAttemptVideoUseCase:
             raise ValidationError("Attempt not in progress")
 
         exam = self._exam_repo.get_by_id(attempt.exam_id)
-        if not exam or not exam.require_attempt_video:
+        if not exam or not exam.require_camera or not exam.require_attempt_video:
             raise ValidationError("Este examen no requiere video del intento")
 
         if attempt.attempt_video_url:
@@ -1472,15 +1521,21 @@ class SaveAttemptSnapshotUseCase:
     def __init__(
         self,
         attempt_repo: AttemptRepository,
+        exam_repo: ExamRepository,
         snapshot_repo: AttemptSnapshotRepository,
     ):
         self._attempt_repo = attempt_repo
+        self._exam_repo = exam_repo
         self._snapshot_repo = snapshot_repo
 
     def execute(self, attempt_id: UUID, snapshot_type: SnapshotType, image_url: str) -> AttemptSnapshot:
         attempt = self._attempt_repo.get_by_id(attempt_id)
         if not attempt or attempt.status != AttemptStatus.IN_PROGRESS:
             raise ValidationError("Attempt not in progress")
+
+        exam = self._exam_repo.get_by_id(attempt.exam_id)
+        if not exam or not exam.require_camera:
+            raise ValidationError("Este examen no requiere cámara ni capturas")
 
         if snapshot_type == SnapshotType.START:
             if self._snapshot_repo.count_by_type(attempt_id, SnapshotType.START) >= 1:
@@ -1707,7 +1762,8 @@ class GetAttemptAnswersReportUseCase:
             "total_score": exam.total_score,
             "answers": answer_details,
             "video_url": attempt.attempt_video_url,
-            "require_attempt_video": exam.require_attempt_video,
+            "require_attempt_video": exam.require_camera and exam.require_attempt_video,
+            "require_camera": exam.require_camera,
             "snapshots": [
                 {
                     "id": str(snapshot.id),

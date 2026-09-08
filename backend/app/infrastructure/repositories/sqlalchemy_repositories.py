@@ -130,10 +130,13 @@ def _exam_to_entity(model: ExamModel) -> Exam:
         closes_at=model.closes_at,
         random_selection=model.random_selection,
         enforce_question_time=model.enforce_question_time,
+        require_camera=model.require_camera,
         require_attempt_video=model.require_attempt_video,
         max_attempts=model.max_attempts,
         attempt_policy=AttemptPolicy(model.attempt_policy),
         proctoring_sensitivity=model.proctoring_sensitivity,
+        attempt_cooldown_enabled=model.attempt_cooldown_enabled,
+        attempt_cooldown_seconds=model.attempt_cooldown_seconds,
         selected_question_ids=selected_ids,
         question_configs=configs,
         created_at=model.created_at,
@@ -449,10 +452,13 @@ class SQLAlchemyExamRepository(ExamRepository):
             closes_at=exam.closes_at,
             random_selection=exam.random_selection,
             enforce_question_time=exam.enforce_question_time,
+            require_camera=exam.require_camera,
             require_attempt_video=exam.require_attempt_video,
             max_attempts=exam.max_attempts,
             attempt_policy=exam.attempt_policy.value,
             proctoring_sensitivity=exam.proctoring_sensitivity,
+            attempt_cooldown_enabled=exam.attempt_cooldown_enabled,
+            attempt_cooldown_seconds=exam.attempt_cooldown_seconds,
             selected_question_ids=[str(i) for i in exam.selected_question_ids],
             question_configs=[
                 {
@@ -503,10 +509,13 @@ class SQLAlchemyExamRepository(ExamRepository):
         model.closes_at = exam.closes_at
         model.random_selection = exam.random_selection
         model.enforce_question_time = exam.enforce_question_time
+        model.require_camera = exam.require_camera
         model.require_attempt_video = exam.require_attempt_video
         model.max_attempts = exam.max_attempts
         model.attempt_policy = exam.attempt_policy.value
         model.proctoring_sensitivity = exam.proctoring_sensitivity
+        model.attempt_cooldown_enabled = exam.attempt_cooldown_enabled
+        model.attempt_cooldown_seconds = exam.attempt_cooldown_seconds
         model.selected_question_ids = [str(i) for i in exam.selected_question_ids]
         model.question_configs = [
             {

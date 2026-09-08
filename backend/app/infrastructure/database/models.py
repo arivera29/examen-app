@@ -124,10 +124,13 @@ class ExamModel(Base):
     closes_at = Column(DateTime(timezone=True), nullable=False)
     random_selection = Column(Boolean, default=True)
     enforce_question_time = Column(Boolean, default=False)
+    require_camera = Column(Boolean, default=True, nullable=False)
     require_attempt_video = Column(Boolean, default=False)
     max_attempts = Column(Integer, default=1, nullable=False)
     attempt_policy = Column(String(20), default=AttemptPolicy.FLEXIBLE.value, nullable=False)
     proctoring_sensitivity = Column(Float, default=0.4, nullable=False)
+    attempt_cooldown_enabled = Column(Boolean, default=False, nullable=False)
+    attempt_cooldown_seconds = Column(Integer, default=0, nullable=False)
     selected_question_ids = Column(JSON, default=list)
     question_configs = Column(JSON, default=list)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -256,6 +259,13 @@ def _apply_schema_updates():
                         "VARCHAR(20) NOT NULL DEFAULT 'flexible'"
                     )
                 )
+            if "require_camera" not in exam_columns:
+                connection.execute(
+                    text(
+                        "ALTER TABLE exams ADD COLUMN require_camera "
+                        "BOOLEAN NOT NULL DEFAULT TRUE"
+                    )
+                )
             if "require_attempt_video" not in exam_columns:
                 connection.execute(
                     text(
@@ -268,6 +278,20 @@ def _apply_schema_updates():
                     text(
                         "ALTER TABLE exams ADD COLUMN proctoring_sensitivity "
                         "DOUBLE PRECISION NOT NULL DEFAULT 0.4"
+                    )
+                )
+            if "attempt_cooldown_enabled" not in exam_columns:
+                connection.execute(
+                    text(
+                        "ALTER TABLE exams ADD COLUMN attempt_cooldown_enabled "
+                        "BOOLEAN NOT NULL DEFAULT FALSE"
+                    )
+                )
+            if "attempt_cooldown_seconds" not in exam_columns:
+                connection.execute(
+                    text(
+                        "ALTER TABLE exams ADD COLUMN attempt_cooldown_seconds "
+                        "INTEGER NOT NULL DEFAULT 0"
                     )
                 )
 

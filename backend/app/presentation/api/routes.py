@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.application.attempt_access import (
     count_finished_attempts,
+    compute_attempt_cooldown_remaining_seconds,
     get_in_progress_attempt,
     has_exhausted_attempts,
     is_finished_attempt,
@@ -968,6 +969,9 @@ def get_exam_session(token: str, db: Session = Depends(get_db)):
         and not email_in_progress
         and attempt_status != "in_progress"
     )
+    attempt_cooldown_remaining = compute_attempt_cooldown_remaining_seconds(exam, email_attempts)
+    if attempt_cooldown_remaining > 0:
+        can_start_new_attempt = False
 
     if in_progress:
         display_attempt_number = in_progress.attempt_number
@@ -1016,11 +1020,15 @@ def get_exam_session(token: str, db: Session = Depends(get_db)):
     return {
         "exam_title": exam.title,
         "exam_total_score": exam.total_score,
-        "require_attempt_video": exam.require_attempt_video,
+        "require_attempt_video": exam.require_camera and exam.require_attempt_video,
+        "require_camera": exam.require_camera,
         "mode": exam.mode.value,
         "question_count": exam.question_count,
         "max_attempts": exam.max_attempts,
         "attempt_policy": exam.attempt_policy.value,
+        "attempt_cooldown_enabled": exam.attempt_cooldown_enabled,
+        "attempt_cooldown_seconds": exam.attempt_cooldown_seconds if exam.attempt_cooldown_enabled else 0,
+        "attempt_cooldown_remaining_seconds": attempt_cooldown_remaining,
         "attempts_used": finished_count,
         "attempts_remaining": attempts_remaining,
         "total_time_seconds": total_time,
@@ -1225,6 +1233,7 @@ async def save_attempt_snapshot(
 
     use_case = SaveAttemptSnapshotUseCase(
         SQLAlchemyAttemptRepository(db),
+        SQLAlchemyExamRepository(db),
         SQLAlchemyAttemptSnapshotRepository(db),
     )
     try:
@@ -1350,10 +1359,13 @@ def _exam_to_response(exam, attempt_repo: SQLAlchemyAttemptRepository | None = N
         closes_at=exam.closes_at,
         random_selection=exam.random_selection,
         enforce_question_time=exam.enforce_question_time,
-        require_attempt_video=exam.require_attempt_video,
+        require_camera=exam.require_camera,
+        require_attempt_video=exam.require_camera and exam.require_attempt_video,
         max_attempts=exam.max_attempts,
         attempt_policy=exam.attempt_policy,
         proctoring_sensitivity=exam.proctoring_sensitivity,
+        attempt_cooldown_enabled=exam.attempt_cooldown_enabled,
+        attempt_cooldown_seconds=exam.attempt_cooldown_seconds,
         question_bank_id=exam.question_bank_id,
         has_attempts=has_attempts,
     )

@@ -58,9 +58,19 @@
             <strong>{{ formatDecisionTime() }}</strong>.
           </p>
         }
+        @if (isAttemptCooldownActive) {
+          <p class="decision-timer cooldown-timer">
+            Debes esperar <strong>{{ formatCooldownTime() }}</strong> antes de iniciar el siguiente intento.
+          </p>
+        }
         <div class="result-actions">
-          @if (canStartNewAttempt) {
-            <button mat-flat-button color="primary" (click)="prepareAnotherAttempt()">
+          @if (canStartNewAttempt || isAttemptCooldownActive) {
+            <button
+              mat-flat-button
+              color="primary"
+              (click)="prepareAnotherAttempt()"
+              [disabled]="isAttemptCooldownActive"
+            >
               Realizar otro intento
             </button>
           }
@@ -77,12 +87,18 @@
       <h1>{{ pendingResume ? 'Continuar examen' : 'Preparación del examen' }}</h1>
       @if (pendingResume) {
         <p class="resume-hint">
-          Tienes un examen en progreso. Habilita la cámara y continúa donde lo dejaste.
+          @if (requireCamera) {
+            Tienes un examen en progreso. Habilita la cámara y continúa donde lo dejaste.
+          } @else {
+            Tienes un examen en progreso. Continúa donde lo dejaste.
+          }
         </p>
-      } @else {
+      } @else if (requireCamera) {
         <p>Antes de iniciar, registra tu nombre completo y habilita tu cámara. El sistema monitoreará tu comportamiento durante la prueba.</p>
+      } @else {
+        <p>Antes de iniciar, registra tu nombre completo.</p>
       }
-      @if (requireAttemptVideo) {
+      @if (requiresAttemptVideo) {
         <p class="video-hint">
           Este examen requiere grabar video durante todo el intento. El video se enviará automáticamente al finalizar.
         </p>
@@ -111,6 +127,11 @@
           <p class="attempt-hint">Puedes usar tus intentos en cualquier momento antes del cierre.</p>
         }
       }
+      @if (isAttemptCooldownActive) {
+        <p class="decision-timer cooldown-timer">
+          Debes esperar <strong>{{ formatCooldownTime() }}</strong> antes de iniciar este intento.
+        </p>
+      }
 
       <mat-form-field appearance="outline" class="full-width">
         <mat-label>Nombre completo</mat-label>
@@ -123,13 +144,15 @@
         />
       </mat-form-field>
 
-      <div class="camera-preview">
-        <video #setupVideo autoplay playsinline muted class="video-feed"></video>
-        <canvas #canvasElement hidden></canvas>
-      </div>
+      @if (requireCamera) {
+        <div class="camera-preview">
+          <video #setupVideo autoplay playsinline muted class="video-feed"></video>
+          <canvas #canvasElement hidden></canvas>
+        </div>
+      }
 
       <div class="setup-actions">
-        @if (!cameraReady) {
+        @if (requireCamera && !cameraReady) {
           <button mat-flat-button color="primary" (click)="enableCamera()">
             <mat-icon>videocam</mat-icon> Habilitar cámara
           </button>
@@ -298,16 +321,18 @@
         }
       </mat-card>
 
-      <div class="camera-panel">
-        <video #examVideo autoplay playsinline muted class="video-small"></video>
-        <canvas #canvasElement hidden></canvas>
-        @if (requiresAttemptVideo && isRecordingVideo) {
-          <p class="recording-label">
-            <mat-icon>fiber_manual_record</mat-icon> Grabando video del intento
-          </p>
-        }
-        <p class="camera-label">Monitoreo activo</p>
-      </div>
+      @if (requireCamera) {
+        <div class="camera-panel">
+          <video #examVideo autoplay playsinline muted class="video-small"></video>
+          <canvas #canvasElement hidden></canvas>
+          @if (requiresAttemptVideo && isRecordingVideo) {
+            <p class="recording-label">
+              <mat-icon>fiber_manual_record</mat-icon> Grabando video del intento
+            </p>
+          }
+          <p class="camera-label">Monitoreo activo</p>
+        </div>
+      }
     </div>
   }
 </div>
