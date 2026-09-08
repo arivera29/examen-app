@@ -1,33 +1,101 @@
-from unittest.mock import patch
+from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
 
-from app.application.attempt_questions import assign_attempt_questions, summarize_attempt_answers
+from app.application.attempt_questions import (
+    assign_attempt_questions,
+    select_questions_balanced_by_topic,
+    summarize_attempt_answers,
+)
 from app.domain.entities import Answer, Exam, ExamAttempt, ExamQuestionConfig, Question, QuestionOption
 from app.domain.enums import ExamMode, QuestionType
 from datetime import datetime, timedelta, timezone
-from unittest.mock import MagicMock
 
 FUTURE_CLOSES_AT = datetime.now(timezone.utc) + timedelta(days=7)
 
 
+def _question(owner_id, text: str, topic_id=None) -> Question:
+    return Question(
+        text=text,
+        question_type=QuestionType.SINGLE_CHOICE,
+        time_seconds=60,
+        owner_id=owner_id,
+        topic_id=topic_id,
+        options=[QuestionOption(text="A", is_correct=True)],
+    )
+
+
+class TestSelectQuestionsBalancedByTopic:
+    def test_balances_proportionally_across_topics(self):
+        owner_id = uuid4()
+        topic_a = uuid4()
+        topic_b = uuid4()
+        topic_c = uuid4()
+        questions = (
+            [_question(owner_id, f"A{i}", topic_a) for i in range(6)]
+            + [_question(owner_id, f"B{i}", topic_b) for i in range(3)]
+            + [_question(owner_id, f"C{i}", topic_c) for i in range(3)]
+        )
+
+        selected = select_questions_balanced_by_topic(questions, 6)
+
+        counts = {}
+        for question in selected:
+            counts[question.topic_id] = counts.get(question.topic_id, 0) + 1
+
+        assert len(selected) == 6
+        assert counts[topic_a] == 3
+        assert counts[topic_b] + counts[topic_c] == 3
+        assert counts[topic_b] in (1, 2)
+        assert counts[topic_c] in (1, 2)
+
+    def test_single_topic_uses_random_sample(self):
+        owner_id = uuid4()
+        topic_id = uuid4()
+        questions = [_question(owner_id, f"Q{i}", topic_id) for i in range(8)]
+
+        selected = select_questions_balanced_by_topic(questions, 4)
+
+        assert len(selected) == 4
+        assert all(question.topic_id == topic_id for question in selected)
+
+    def test_includes_questions_without_topic(self):
+        owner_id = uuid4()
+        topic_id = uuid4()
+        questions = (
+            [_question(owner_id, f"T{i}", topic_id) for i in range(4)]
+            + [_question(owner_id, f"N{i}", None) for i in range(4)]
+        )
+
+        selected = select_questions_balanced_by_topic(questions, 4)
+
+        counts = {}
+        for question in selected:
+            counts[question.topic_id] = counts.get(question.topic_id, 0) + 1
+
+        assert len(selected) == 4
+        assert counts.get(topic_id, 0) == 2
+        assert counts.get(None, 0) == 2
+
+    def test_raises_when_not_enough_questions(self):
+        owner_id = uuid4()
+        questions = [_question(owner_id, "Q1", uuid4())]
+
+        with pytest.raises(ValueError, match="Not enough questions"):
+            select_questions_balanced_by_topic(questions, 3)
+
+
 class TestAssignAttemptQuestions:
-    @patch("app.application.attempt_questions.random.sample")
-    def test_assigns_different_questions_per_attempt(self, mock_sample):
+    def test_assigns_balanced_questions_per_attempt(self):
         owner_id = uuid4()
         bank_id = uuid4()
-        questions = [
-            Question(
-                text=f"Q{i}",
-                question_type=QuestionType.SINGLE_CHOICE,
-                time_seconds=60,
-                owner_id=owner_id,
-                options=[QuestionOption(text="A", is_correct=True)],
-            )
-            for i in range(6)
-        ]
-        mock_sample.side_effect = [questions[:3], questions[3:6]]
+        topic_a = uuid4()
+        topic_b = uuid4()
+        questions = (
+            [_question(owner_id, f"A{i}", topic_a) for i in range(4)]
+            + [_question(owner_id, f"B{i}", topic_b) for i in range(4)]
+        )
 
         exam = Exam(
             title="Exam",
@@ -36,7 +104,7 @@ class TestAssignAttemptQuestions:
             question_bank_id=bank_id,
             mode=ExamMode.REAL,
             total_score=30,
-            question_count=3,
+            question_count=4,
             closes_at=FUTURE_CLOSES_AT,
             random_selection=True,
             id=uuid4(),
@@ -50,9 +118,19 @@ class TestAssignAttemptQuestions:
         assign_attempt_questions(exam, attempt_one, question_repo)
         assign_attempt_questions(exam, attempt_two, question_repo)
 
-        assert attempt_one.selected_question_ids != attempt_two.selected_question_ids
-        assert len(attempt_one.selected_question_ids) == 3
-        assert len(attempt_two.selected_question_ids) == 3
+        assert len(attempt_one.selected_question_ids) == 4
+        assert len(attempt_two.selected_question_ids) == 4
+        assert set(attempt_one.selected_question_ids).issubset({q.id for q in questions})
+        assert set(attempt_two.selected_question_ids).issubset({q.id for q in questions})
+
+        by_id = {q.id: q for q in questions}
+        for attempt in (attempt_one, attempt_two):
+            counts = {}
+            for question_id in attempt.selected_question_ids:
+                topic_id = by_id[question_id].topic_id
+                counts[topic_id] = counts.get(topic_id, 0) + 1
+            assert counts[topic_a] == 2
+            assert counts[topic_b] == 2
 
     def test_keeps_existing_assignment_when_resuming(self):
         owner_id = uuid4()
@@ -81,21 +159,11 @@ class TestAssignAttemptQuestions:
         question_repo.list_by_bank.assert_not_called()
         assert attempt.selected_question_ids == [question_id]
 
-    @patch("app.application.attempt_questions.random.sample")
-    def test_points_sum_equals_total_score(self, mock_sample):
+    def test_points_sum_equals_total_score(self):
         owner_id = uuid4()
         bank_id = uuid4()
-        questions = [
-            Question(
-                text=f"Q{i}",
-                question_type=QuestionType.SINGLE_CHOICE,
-                time_seconds=60,
-                owner_id=owner_id,
-                options=[QuestionOption(text="A", is_correct=True)],
-            )
-            for i in range(5)
-        ]
-        mock_sample.return_value = questions
+        topic_id = uuid4()
+        questions = [_question(owner_id, f"Q{i}", topic_id) for i in range(5)]
 
         exam = Exam(
             title="Exam",

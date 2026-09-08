@@ -1,4 +1,5 @@
 import random
+from collections import defaultdict
 from uuid import UUID
 
 from app.domain.entities import Answer, Exam, ExamAttempt, ExamQuestionConfig, Question
@@ -21,6 +22,71 @@ def get_attempt_question_ids(exam: Exam, attempt: ExamAttempt | None) -> list[UU
     return []
 
 
+def select_questions_balanced_by_topic(
+    questions: list[Question],
+    count: int,
+) -> list[Question]:
+    """Select `count` questions with proportional balance across topics.
+
+    Allocation uses the largest-remainder method over the bank composition.
+    Within each topic the pick is random. The final order is shuffled.
+    """
+    if count <= 0:
+        return []
+    if len(questions) < count:
+        raise ValueError("Not enough questions in bank")
+    if count == len(questions):
+        selected = list(questions)
+        random.shuffle(selected)
+        return selected
+
+    by_topic: dict[UUID | None, list[Question]] = defaultdict(list)
+    for question in questions:
+        by_topic[question.topic_id].append(question)
+
+    topics = list(by_topic.keys())
+    for topic_id in topics:
+        random.shuffle(by_topic[topic_id])
+
+    if len(topics) == 1:
+        return random.sample(questions, count)
+
+    total = len(questions)
+    raw_shares = {topic_id: (len(by_topic[topic_id]) / total) * count for topic_id in topics}
+    floors = {topic_id: int(raw_shares[topic_id]) for topic_id in topics}
+    allocated = dict(floors)
+    remaining_slots = count - sum(floors.values())
+    remainder_order = sorted(
+        topics,
+        key=lambda topic_id: (raw_shares[topic_id] - floors[topic_id], len(by_topic[topic_id])),
+        reverse=True,
+    )
+    for topic_id in remainder_order:
+        if remaining_slots <= 0:
+            break
+        allocated[topic_id] += 1
+        remaining_slots -= 1
+
+    selected: list[Question] = []
+    shortfall = 0
+    leftovers: list[Question] = []
+    for topic_id in topics:
+        available = by_topic[topic_id]
+        take = min(allocated[topic_id], len(available))
+        shortfall += allocated[topic_id] - take
+        selected.extend(available[:take])
+        leftovers.extend(available[take:])
+
+    if shortfall > 0:
+        random.shuffle(leftovers)
+        if len(leftovers) < shortfall:
+            raise ValueError("Not enough questions in bank")
+        selected.extend(leftovers[:shortfall])
+
+    random.shuffle(selected)
+    return selected
+
+
 def assign_attempt_questions(
     exam: Exam,
     attempt: ExamAttempt,
@@ -33,7 +99,7 @@ def assign_attempt_questions(
         bank_questions = question_repo.list_by_bank(exam.question_bank_id)
         if len(bank_questions) < exam.question_count:
             raise ValueError("Not enough questions in bank")
-        selected = random.sample(bank_questions, exam.question_count)
+        selected = select_questions_balanced_by_topic(bank_questions, exam.question_count)
     else:
         selected = question_repo.list_by_ids(exam.selected_question_ids)
         if len(selected) != exam.question_count:
