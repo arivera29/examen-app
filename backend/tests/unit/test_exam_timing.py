@@ -1,7 +1,12 @@
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
-from app.application.exam_timing import get_remaining_seconds, get_total_exam_seconds, is_exam_closed
+from app.application.exam_timing import (
+    get_remaining_seconds,
+    get_total_exam_seconds,
+    is_exam_closed,
+    is_exam_not_yet_open,
+)
 from app.domain.entities import Exam, ExamAttempt, ExamQuestionConfig
 from app.domain.enums import ExamMode
 
@@ -49,3 +54,17 @@ def test_remaining_seconds_after_start():
 def test_is_exam_closed():
     exam = _exam_with_configs(150, closes_in_hours=-1)
     assert is_exam_closed(exam) is True
+
+
+def test_is_exam_not_yet_open():
+    exam = _exam_with_configs(150, closes_in_hours=24)
+    exam.starts_at = datetime.now(timezone.utc) + timedelta(hours=2)
+    assert is_exam_not_yet_open(exam) is True
+    assert is_exam_closed(exam) is False
+
+
+def test_exam_within_window_after_start():
+    exam = _exam_with_configs(150, closes_in_hours=24)
+    exam.starts_at = datetime.now(timezone.utc) - timedelta(minutes=5)
+    assert is_exam_not_yet_open(exam) is False
+    assert is_exam_closed(exam) is False

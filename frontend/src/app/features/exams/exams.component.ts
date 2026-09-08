@@ -55,6 +55,7 @@ export class ExamsComponent implements OnInit {
     mode: ['simulation', Validators.required],
     total_score: [100, [Validators.required, Validators.min(1)]],
     question_count: [10, [Validators.required, Validators.min(1)]],
+    starts_at: [this.defaultStartsAtLocal(), Validators.required],
     closes_at: [this.defaultClosesAtLocal(), Validators.required],
     random_selection: [true],
     enforce_question_time: [false],
@@ -66,6 +67,10 @@ export class ExamsComponent implements OnInit {
     attempt_cooldown_enabled: [false],
     attempt_cooldown_seconds: [60, [Validators.min(1)]],
   });
+
+  defaultStartsAtLocal(): string {
+    return this.toDatetimeLocal(new Date().toISOString());
+  }
 
   defaultClosesAtLocal(): string {
     const d = new Date();
@@ -79,7 +84,7 @@ export class ExamsComponent implements OnInit {
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
   }
 
-  formatClosesAt(iso: string): string {
+  formatExamDate(iso: string): string {
     return new Date(iso).toLocaleString();
   }
 
@@ -144,6 +149,7 @@ export class ExamsComponent implements OnInit {
       mode: 'simulation',
       total_score: 100,
       question_count: 10,
+      starts_at: this.defaultStartsAtLocal(),
       closes_at: this.defaultClosesAtLocal(),
       random_selection: true,
       enforce_question_time: false,
@@ -168,6 +174,7 @@ export class ExamsComponent implements OnInit {
       mode: exam.mode,
       total_score: exam.total_score,
       question_count: exam.question_count,
+      starts_at: this.toDatetimeLocal(exam.starts_at || exam.closes_at),
       closes_at: this.toDatetimeLocal(exam.closes_at),
       random_selection: exam.random_selection,
       enforce_question_time: exam.enforce_question_time,
@@ -184,6 +191,7 @@ export class ExamsComponent implements OnInit {
       this.form.get('mode')?.disable();
       this.form.get('total_score')?.disable();
       this.form.get('question_count')?.disable();
+      this.form.get('starts_at')?.disable();
       this.form.get('closes_at')?.disable();
       this.form.get('random_selection')?.disable();
       this.form.get('enforce_question_time')?.disable();
@@ -210,6 +218,18 @@ export class ExamsComponent implements OnInit {
     if (this.form.invalid) return;
 
     const raw = this.form.getRawValue();
+    const startsAt = new Date(String(raw.starts_at));
+    const closesAt = new Date(String(raw.closes_at));
+    if (Number.isNaN(startsAt.getTime()) || Number.isNaN(closesAt.getTime())) {
+      this.snackBar.open('Indica fechas de inicio y cierre válidas', 'Cerrar', { duration: 4000 });
+      return;
+    }
+    if (startsAt >= closesAt) {
+      this.snackBar.open('La fecha de inicio debe ser anterior a la fecha de cierre', 'Cerrar', {
+        duration: 4000,
+      });
+      return;
+    }
     if (Boolean(raw.attempt_cooldown_enabled) && Number(raw.max_attempts) < 2) {
       this.snackBar.open('La espera entre intentos requiere al menos 2 intentos', 'Cerrar', {
         duration: 4000,
@@ -230,7 +250,8 @@ export class ExamsComponent implements OnInit {
       mode: String(raw.mode ?? 'simulation'),
       total_score: Number(raw.total_score),
       question_count: Number(raw.question_count),
-      closes_at: new Date(String(raw.closes_at)).toISOString(),
+      starts_at: startsAt.toISOString(),
+      closes_at: closesAt.toISOString(),
       random_selection: Boolean(raw.random_selection),
       enforce_question_time: Boolean(raw.enforce_question_time),
       require_camera: Boolean(raw.require_camera),

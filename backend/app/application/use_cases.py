@@ -20,7 +20,13 @@ from app.application.attempt_questions import (
     resolve_attempt_question_configs,
     summarize_attempt_answers,
 )
-from app.application.exam_timing import get_remaining_seconds, get_total_exam_seconds, is_exam_closed, is_exam_time_expired
+from app.application.exam_timing import (
+    get_remaining_seconds,
+    get_total_exam_seconds,
+    is_exam_closed,
+    is_exam_not_yet_open,
+    is_exam_time_expired,
+)
 from app.application.question_backup import build_backup_payload, parse_backup_payload, parse_question_item
 from app.domain.entities import (
     Answer,
@@ -577,6 +583,23 @@ class RestoreQuestionBankBackupUseCase:
         return created.id
 
 
+def _resolve_exam_schedule(exam_data: dict) -> tuple[datetime, datetime]:
+    closes_at = exam_data["closes_at"]
+    if closes_at.tzinfo is None:
+        closes_at = closes_at.replace(tzinfo=timezone.utc)
+
+    starts_at = exam_data.get("starts_at") or datetime.now(timezone.utc)
+    if starts_at.tzinfo is None:
+        starts_at = starts_at.replace(tzinfo=timezone.utc)
+
+    if closes_at <= datetime.now(timezone.utc):
+        raise ValidationError("La fecha de cierre debe ser futura")
+    if starts_at >= closes_at:
+        raise ValidationError("La fecha de inicio debe ser anterior a la fecha de cierre")
+
+    return starts_at, closes_at
+
+
 def _resolve_attempt_cooldown_settings(exam_data: dict) -> tuple[bool, int]:
     enabled = bool(exam_data.get("attempt_cooldown_enabled", False))
     seconds = int(exam_data.get("attempt_cooldown_seconds", 0) or 0)
@@ -638,11 +661,7 @@ class CreateExamUseCase:
                 for i, q in enumerate(selected)
             ]
 
-        closes_at = exam_data["closes_at"]
-        if closes_at.tzinfo is None:
-            closes_at = closes_at.replace(tzinfo=timezone.utc)
-        if closes_at <= datetime.now(timezone.utc):
-            raise ValidationError("Close date must be in the future")
+        starts_at, closes_at = _resolve_exam_schedule(exam_data)
 
         cooldown_enabled, cooldown_seconds = _resolve_attempt_cooldown_settings(exam_data)
         require_camera, require_attempt_video = _resolve_camera_settings(exam_data)
@@ -655,6 +674,7 @@ class CreateExamUseCase:
             mode=exam_data["mode"],
             total_score=exam_data["total_score"],
             question_count=exam_data["question_count"],
+            starts_at=starts_at,
             closes_at=closes_at,
             random_selection=exam_data.get("random_selection", True),
             enforce_question_time=exam_data.get("enforce_question_time", False),
@@ -724,11 +744,7 @@ class UpdateExamUseCase:
                 for i, q in enumerate(selected)
             ]
 
-        closes_at = exam_data["closes_at"]
-        if closes_at.tzinfo is None:
-            closes_at = closes_at.replace(tzinfo=timezone.utc)
-        if closes_at <= datetime.now(timezone.utc):
-            raise ValidationError("Close date must be in the future")
+        starts_at, closes_at = _resolve_exam_schedule(exam_data)
 
         cooldown_enabled, cooldown_seconds = _resolve_attempt_cooldown_settings(exam_data)
         require_camera, require_attempt_video = _resolve_camera_settings(exam_data)
@@ -739,6 +755,7 @@ class UpdateExamUseCase:
         exam.mode = exam_data["mode"]
         exam.total_score = exam_data["total_score"]
         exam.question_count = exam_data["question_count"]
+        exam.starts_at = starts_at
         exam.closes_at = closes_at
         exam.random_selection = exam_data.get("random_selection", True)
         exam.enforce_question_time = exam_data.get("enforce_question_time", False)
@@ -1038,8 +1055,10 @@ class StartExamAttemptUseCase:
         exam = self._exam_repo.get_by_id(invitation.exam_id)
         if not exam or exam.status == ExamStatus.CLOSED:
             raise ValidationError("Exam is not available")
+        if is_exam_not_yet_open(exam):
+            raise ValidationError("El examen aún no está disponible. Espere a la fecha de inicio")
         if is_exam_closed(exam):
-            raise ValidationError("Exam has closed")
+            raise ValidationError("El examen ya cerró")
 
         if exam.require_camera and not camera_verified:
             raise ValidationError("Camera verification required")

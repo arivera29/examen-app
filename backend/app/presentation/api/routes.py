@@ -25,7 +25,12 @@ from app.application.exam_session import (
     get_attempt_question_ids_ordered,
     order_questions_by_attempt,
 )
-from app.application.exam_timing import get_remaining_seconds, get_total_exam_seconds
+from app.application.exam_timing import (
+    get_remaining_seconds,
+    get_total_exam_seconds,
+    is_exam_closed,
+    is_exam_not_yet_open,
+)
 from app.application.use_cases import (
     CreateExamUseCase,
     CreateQuestionBankUseCase,
@@ -973,6 +978,11 @@ def get_exam_session(token: str, db: Session = Depends(get_db)):
     if attempt_cooldown_remaining > 0:
         can_start_new_attempt = False
 
+    exam_not_yet_open = is_exam_not_yet_open(exam)
+    exam_window_closed = is_exam_closed(exam)
+    if exam_not_yet_open or exam_window_closed:
+        can_start_new_attempt = False
+
     if in_progress:
         display_attempt_number = in_progress.attempt_number
     elif can_start_new_attempt and finished_count < exam.max_attempts:
@@ -986,6 +996,7 @@ def get_exam_session(token: str, db: Session = Depends(get_db)):
         not exam_finalized
         and finished_count > 0
         and not has_exhausted_attempts(exam, email_attempts)
+        and not exam_not_yet_open
     )
     pending_decision = pending_attempt_decision(
         invitation,
@@ -1055,6 +1066,10 @@ def get_exam_session(token: str, db: Session = Depends(get_db)):
             in_progress is not None and in_progress.invitation_id == invitation.id
         ),
         "terminated_for_violation": terminated_for_violation,
+        "starts_at": exam.starts_at.isoformat() if exam.starts_at else None,
+        "closes_at": exam.closes_at.isoformat() if exam.closes_at else None,
+        "exam_not_yet_open": exam_not_yet_open,
+        "exam_window_closed": exam_window_closed,
     }
 
 
@@ -1358,6 +1373,7 @@ def _exam_to_response(exam, attempt_repo: SQLAlchemyAttemptRepository | None = N
         question_count=exam.question_count,
         closes_at=exam.closes_at,
         random_selection=exam.random_selection,
+        starts_at=exam.starts_at,
         enforce_question_time=exam.enforce_question_time,
         require_camera=exam.require_camera,
         require_attempt_video=exam.require_camera and exam.require_attempt_video,

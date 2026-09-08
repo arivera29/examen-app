@@ -122,6 +122,7 @@ class ExamModel(Base):
     total_score = Column(Float, nullable=False)
     question_count = Column(Integer, nullable=False)
     closes_at = Column(DateTime(timezone=True), nullable=False)
+    starts_at = Column(DateTime(timezone=True), nullable=False)
     random_selection = Column(Boolean, default=True)
     enforce_question_time = Column(Boolean, default=False)
     require_camera = Column(Boolean, default=True, nullable=False)
@@ -293,6 +294,19 @@ def _apply_schema_updates():
                         "ALTER TABLE exams ADD COLUMN attempt_cooldown_seconds "
                         "INTEGER NOT NULL DEFAULT 0"
                     )
+                )
+            if "starts_at" not in exam_columns:
+                connection.execute(
+                    text("ALTER TABLE exams ADD COLUMN starts_at TIMESTAMPTZ")
+                )
+                connection.execute(
+                    text(
+                        "UPDATE exams SET starts_at = COALESCE(created_at, NOW() - INTERVAL '1 day') "
+                        "WHERE starts_at IS NULL"
+                    )
+                )
+                connection.execute(
+                    text("ALTER TABLE exams ALTER COLUMN starts_at SET NOT NULL")
                 )
 
     if "exam_attempts" not in table_names:

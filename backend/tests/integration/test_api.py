@@ -119,6 +119,7 @@ class TestExamFlowIntegration:
                 "mode": "simulation",
                 "total_score": 30,
                 "question_count": 3,
+                "starts_at": (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat(),
                 "closes_at": (datetime.now(timezone.utc) + timedelta(days=7)).isoformat(),
                 "random_selection": True,
             },

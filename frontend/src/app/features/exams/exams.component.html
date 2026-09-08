@@ -49,6 +49,13 @@
           <mat-label>Calificación total</mat-label>
           <input matInput type="number" formControlName="total_score" />
         </mat-form-field>
+      </div>
+
+      <div class="row">
+        <mat-form-field appearance="outline">
+          <mat-label>Inicio de la prueba</mat-label>
+          <input matInput type="datetime-local" formControlName="starts_at" />
+        </mat-form-field>
         <mat-form-field appearance="outline">
           <mat-label>Cierre de la prueba</mat-label>
           <input matInput type="datetime-local" formControlName="closes_at" />
@@ -180,7 +187,8 @@
       <p>{{ exam.description || 'Sin descripción' }}</p>
       <p class="exam-meta">
         {{ exam.question_count }} preguntas · {{ exam.total_score }} pts ·
-        cierra {{ formatClosesAt(exam.closes_at) }}
+        inicia {{ formatExamDate(exam.starts_at || exam.closes_at) }} ·
+        cierra {{ formatExamDate(exam.closes_at) }}
       </p>
       <div class="exam-actions">
         <a mat-button [routerLink]="['/dashboard/exams', exam.id, 'invite']">Invitaciones</a>

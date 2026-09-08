@@ -383,6 +383,43 @@ class TestCreateExamUseCase:
         assert len(exam.selected_question_ids) == 0
         assert exam.random_selection is True
 
+    def test_create_exam_rejects_start_after_close(self):
+        owner_id = uuid4()
+        bank_id = uuid4()
+        bank = QuestionBank(name="Bank", description="", owner_id=owner_id, id=bank_id)
+        questions = [
+            Question(
+                text=f"Q{i}",
+                question_type=QuestionType.SINGLE_CHOICE,
+                time_seconds=60,
+                owner_id=owner_id,
+                options=[QuestionOption(text="A", is_correct=True)],
+            )
+            for i in range(5)
+        ]
+
+        exam_repo = MagicMock()
+        bank_repo = MagicMock()
+        bank_repo.get_by_id.return_value = bank
+        question_repo = MagicMock()
+        question_repo.list_by_bank.return_value = questions
+
+        use_case = CreateExamUseCase(exam_repo, bank_repo, question_repo)
+        with pytest.raises(ValidationError, match="inicio debe ser anterior"):
+            use_case.execute(
+                owner_id,
+                {
+                    "title": "Test Exam",
+                    "question_bank_id": bank_id,
+                    "mode": ExamMode.REAL,
+                    "total_score": 100,
+                    "question_count": 3,
+                    "starts_at": FUTURE_CLOSES_AT + timedelta(days=1),
+                    "closes_at": FUTURE_CLOSES_AT,
+                    "random_selection": True,
+                },
+            )
+
     def test_create_exam_rejects_cooldown_without_enough_attempts(self):
         owner_id = uuid4()
         bank_id = uuid4()
@@ -877,6 +914,37 @@ class TestStartExamAttemptUseCase:
         use_case = StartExamAttemptUseCase(invitation_repo, attempt_repo, exam_repo, MagicMock())
         with pytest.raises(ValidationError, match="Camera verification"):
             use_case.execute("token-camera", camera_verified=False, full_name="Juan Pérez")
+
+    def test_blocks_start_before_exam_opens(self):
+        exam_id = uuid4()
+        invitation = ExamInvitation(
+            exam_id=exam_id,
+            invitee_email="student@test.com",
+            token="token-early",
+        )
+        invitation_repo = MagicMock()
+        invitation_repo.get_by_token.return_value = invitation
+        attempt_repo = MagicMock()
+        exam_repo = MagicMock()
+        exam_repo.get_by_id.return_value = Exam(
+            title="Exam",
+            description="",
+            owner_id=uuid4(),
+            question_bank_id=uuid4(),
+            mode=ExamMode.REAL,
+            total_score=100,
+            question_count=1,
+            starts_at=datetime.now(timezone.utc) + timedelta(hours=2),
+            closes_at=FUTURE_CLOSES_AT,
+            random_selection=True,
+            max_attempts=1,
+            require_camera=False,
+            id=exam_id,
+        )
+
+        use_case = StartExamAttemptUseCase(invitation_repo, attempt_repo, exam_repo, MagicMock())
+        with pytest.raises(ValidationError, match="aún no está disponible"):
+            use_case.execute("token-early", camera_verified=False, full_name="Juan Pérez")
 
 
 class TestUpdateExamUseCase:

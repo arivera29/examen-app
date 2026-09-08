@@ -196,6 +196,28 @@ export class ExamTakeComponent implements OnInit, OnDestroy {
 
         this.examFinalized = Boolean(info['exam_finalized']);
 
+        if (info['exam_not_yet_open']) {
+          this.examBlocked = true;
+          const startsAt = info['starts_at']
+            ? new Date(String(info['starts_at'])).toLocaleString()
+            : '';
+          this.blockMessage = startsAt
+            ? `El examen aún no está disponible. Podrás ingresar a partir del ${startsAt}.`
+            : 'El examen aún no está disponible. Espere a la fecha de inicio.';
+          return;
+        }
+
+        if (info['exam_window_closed'] && !info['exam_finalized'] && !info['has_in_progress_attempt']) {
+          this.examBlocked = true;
+          const closesAt = info['closes_at']
+            ? new Date(String(info['closes_at'])).toLocaleString()
+            : '';
+          this.blockMessage = closesAt
+            ? `El examen ya cerró el ${closesAt}.`
+            : 'El examen ya cerró.';
+          return;
+        }
+
         if (info['terminated_for_violation']) {
           this.examTerminatedForViolation = true;
           this.examFinished = true;

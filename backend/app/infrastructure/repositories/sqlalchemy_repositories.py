@@ -128,6 +128,7 @@ def _exam_to_entity(model: ExamModel) -> Exam:
         total_score=model.total_score,
         question_count=model.question_count,
         closes_at=model.closes_at,
+        starts_at=model.starts_at,
         random_selection=model.random_selection,
         enforce_question_time=model.enforce_question_time,
         require_camera=model.require_camera,
@@ -450,6 +451,7 @@ class SQLAlchemyExamRepository(ExamRepository):
             total_score=exam.total_score,
             question_count=exam.question_count,
             closes_at=exam.closes_at,
+            starts_at=exam.starts_at,
             random_selection=exam.random_selection,
             enforce_question_time=exam.enforce_question_time,
             require_camera=exam.require_camera,
@@ -507,6 +509,7 @@ class SQLAlchemyExamRepository(ExamRepository):
         model.question_count = exam.question_count
         model.question_bank_id = exam.question_bank_id
         model.closes_at = exam.closes_at
+        model.starts_at = exam.starts_at
         model.random_selection = exam.random_selection
         model.enforce_question_time = exam.enforce_question_time
         model.require_camera = exam.require_camera

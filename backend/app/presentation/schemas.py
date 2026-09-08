@@ -89,6 +89,7 @@ class CreateExamRequest(BaseModel):
     mode: ExamMode
     total_score: float = Field(gt=0)
     question_count: int = Field(gt=0)
+    starts_at: datetime
     closes_at: datetime
     random_selection: bool = True
     enforce_question_time: bool = False
@@ -198,6 +199,7 @@ class ExamResponse(BaseModel):
     question_count: int
     closes_at: datetime
     random_selection: bool
+    starts_at: datetime
     enforce_question_time: bool
     require_camera: bool
     require_attempt_video: bool

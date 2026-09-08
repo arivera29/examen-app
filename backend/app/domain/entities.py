@@ -88,6 +88,7 @@ class Exam:
     question_count: int
     closes_at: datetime
     random_selection: bool
+    starts_at: datetime = field(default_factory=datetime.utcnow)
     enforce_question_time: bool = False
     require_camera: bool = True
     require_attempt_video: bool = False

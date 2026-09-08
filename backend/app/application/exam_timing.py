@@ -76,7 +76,20 @@ def is_exam_time_expired(
     return get_remaining_seconds(exam, attempt, bank_questions) <= 0
 
 
-def is_exam_closed(exam: Exam) -> bool:
+def is_exam_closed(exam: Exam, now: datetime | None = None) -> bool:
     if not exam.closes_at:
         return False
-    return datetime.now(timezone.utc) >= _ensure_utc(exam.closes_at)
+    reference = now or datetime.now(timezone.utc)
+    return reference >= _ensure_utc(exam.closes_at)
+
+
+def is_exam_not_yet_open(exam: Exam, now: datetime | None = None) -> bool:
+    if not exam.starts_at:
+        return False
+    reference = now or datetime.now(timezone.utc)
+    return reference < _ensure_utc(exam.starts_at)
+
+
+def is_exam_within_access_window(exam: Exam, now: datetime | None = None) -> bool:
+    reference = now or datetime.now(timezone.utc)
+    return not is_exam_not_yet_open(exam, reference) and not is_exam_closed(exam, reference)

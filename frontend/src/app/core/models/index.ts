@@ -73,6 +73,7 @@ export interface Exam {
   total_score: number;
   question_count: number;
   closes_at: string;
+  starts_at: string;
   random_selection: boolean;
   enforce_question_time: boolean;
   require_camera: boolean;
