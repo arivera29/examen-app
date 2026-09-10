@@ -15,6 +15,7 @@ import { debounceTime, distinctUntilChanged } from 'rxjs/operators';
 import { ApiService } from '../../../core/services/api.service';
 import { Question, Topic } from '../../../core/models';
 import { QuestionFormDialogComponent } from './question-form-dialog.component';
+import { MarkdownContentComponent } from '../../../shared/markdown/markdown-content.component';
 
 @Component({
   selector: 'app-bank-detail',
@@ -31,6 +32,7 @@ import { QuestionFormDialogComponent } from './question-form-dialog.component';
     MatDialogModule,
     MatFormFieldModule,
     MatInputModule,
+    MarkdownContentComponent,
   ],
   templateUrl: './bank-detail.component.html',
   styleUrl: './bank-detail.component.scss',

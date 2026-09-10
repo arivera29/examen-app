@@ -237,7 +237,7 @@
             </p>
           }
           <div class="question-content no-copy">
-            <h2>{{ q.text }}</h2>
+            <app-markdown-content [content]="q.text" [asTitle]="true" />
 
             @if (q.image_url) {
               <img

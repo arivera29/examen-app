@@ -7,6 +7,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { ApiService } from '../../../core/services/api.service';
 import { AttemptAnswersReport, AttemptSnapshot, IndividualReport } from '../../../core/models';
+import { MarkdownContentComponent } from '../../../shared/markdown/markdown-content.component';
 
 export interface AttemptAnswersDialogData {
   examId: string;
@@ -24,6 +25,7 @@ export interface AttemptAnswersDialogData {
     MatIconModule,
     MatProgressSpinnerModule,
     MatSnackBarModule,
+    MarkdownContentComponent,
   ],
   templateUrl: './attempt-answers-dialog.component.html',
   styleUrl: './attempt-answers-dialog.component.scss',

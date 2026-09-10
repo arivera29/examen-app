@@ -2,9 +2,18 @@
 
 <mat-dialog-content>
   <form [formGroup]="form" id="question-form" (ngSubmit)="saveQuestion()">
-    <mat-form-field appearance="outline" class="full-width">
-      <mat-label>Enunciado</mat-label>
-      <textarea matInput formControlName="text" rows="3"></textarea>
+    <mat-form-field appearance="outline" class="full-width enunciado-field">
+      <mat-label>Enunciado (Markdown)</mat-label>
+      <textarea
+        matInput
+        formControlName="text"
+        rows="8"
+        placeholder="Escribe el enunciado. Puedes usar Markdown y bloques de código."
+      ></textarea>
+      <mat-hint>
+        Markdown habilitado. Para código: tres comillas invertidas + lenguaje (python, java, javascript,
+        csharp, sql, etc.) y cierra con otras tres comillas invertidas.
+      </mat-hint>
     </mat-form-field>
 
     <div class="row">

@@ -61,7 +61,7 @@
     <div class="question-item">
       <div class="question-header-row">
         <div>
-          <strong>{{ q.text }}</strong>
+          <app-markdown-content [content]="q.text" [compact]="true" />
           <span class="badge">
             @if (q.topic_name) {
               {{ q.topic_name }} ·

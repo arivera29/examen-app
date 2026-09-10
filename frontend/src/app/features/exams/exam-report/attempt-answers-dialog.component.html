@@ -60,7 +60,9 @@
           <span class="question-number">Pregunta {{ answer.order }}</span>
           <span class="result-badge">{{ resultLabel(answer) }}</span>
         </div>
-        <p class="question-text">{{ answer.question_text }}</p>
+        <div class="question-text">
+          <app-markdown-content [content]="answer.question_text" [compact]="true" />
+        </div>
         <p class="answer-text">
           <strong>Respuesta:</strong> {{ answerLabel(answer) }}
         </p>

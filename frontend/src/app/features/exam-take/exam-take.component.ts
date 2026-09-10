@@ -24,6 +24,7 @@ import { MatInputModule } from '@angular/material/input';
 import { ApiService } from '../../core/services/api.service';
 import { ExamSession, Question, SavedAnswer } from '../../core/models';
 import { ExamLockdownService } from './exam-lockdown.service';
+import { MarkdownContentComponent } from '../../shared/markdown/markdown-content.component';
 
 interface MouseEventData {
   x: number;
@@ -45,6 +46,7 @@ interface MouseEventData {
     MatIconModule,
     MatFormFieldModule,
     MatInputModule,
+    MarkdownContentComponent,
   ],
   templateUrl: './exam-take.component.html',
   styleUrl: './exam-take.component.scss',
