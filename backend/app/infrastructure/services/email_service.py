@@ -1,7 +1,9 @@
 import logging
 import smtplib
+from datetime import datetime, timezone
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from zoneinfo import ZoneInfo
 
 import httpx
 
@@ -9,6 +11,9 @@ from app.config import settings
 from app.domain.services import EmailService
 
 logger = logging.getLogger(__name__)
+
+# Zona horaria de visualización para invitaciones (Colombia).
+INVITATION_DISPLAY_TZ = ZoneInfo("America/Bogota")
 
 
 def _mask_token(token: str) -> str:
@@ -42,15 +47,33 @@ def log_email_configuration() -> None:
         logger.info("Proveedor mock: no se envían correos reales")
 
 
+def format_invitation_datetime(value: datetime | None) -> str:
+    if value is None:
+        return "No definida"
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    local = value.astimezone(INVITATION_DISPLAY_TZ)
+    return local.strftime("%d/%m/%Y %H:%M") + " (hora Colombia)"
+
+
 def build_exam_invitation_content(
-    exam_title: str, invite_link: str, mode: str
+    exam_title: str,
+    invite_link: str,
+    mode: str,
+    starts_at: datetime | None = None,
+    closes_at: datetime | None = None,
 ) -> tuple[str, str, str]:
     mode_label = "Simulacro" if mode == "simulation" else "Prueba real"
+    starts_label = format_invitation_datetime(starts_at)
+    closes_label = format_invitation_datetime(closes_at)
     subject = f"Invitación al examen: {exam_title}"
     text = (
         f"Has sido invitado a un examen.\n\n"
         f"Examen: {exam_title}\n"
-        f"Modo: {mode_label}\n\n"
+        f"Modo: {mode_label}\n"
+        f"Inicio: {starts_label}\n"
+        f"Finalización: {closes_label}\n\n"
+        f"Podrás ingresar solo entre la fecha/hora de inicio y la de finalización.\n\n"
         f"Accede con el siguiente enlace:\n{invite_link}"
     )
     html = f"""
@@ -59,6 +82,9 @@ def build_exam_invitation_content(
         <h2>Has sido invitado a un examen</h2>
         <p><strong>Examen:</strong> {exam_title}</p>
         <p><strong>Modo:</strong> {mode_label}</p>
+        <p><strong>Inicio:</strong> {starts_label}</p>
+        <p><strong>Finalización:</strong> {closes_label}</p>
+        <p>Podrás ingresar solo entre la fecha/hora de inicio y la de finalización.</p>
         <p>Haz clic en el siguiente enlace para acceder:</p>
         <p><a href="{invite_link}">{invite_link}</a></p>
     </body>
@@ -69,9 +95,17 @@ def build_exam_invitation_content(
 
 class SmtpEmailService(EmailService):
     async def send_exam_invitation(
-        self, to_email: str, exam_title: str, invite_link: str, mode: str
+        self,
+        to_email: str,
+        exam_title: str,
+        invite_link: str,
+        mode: str,
+        starts_at: datetime | None = None,
+        closes_at: datetime | None = None,
     ) -> bool:
-        subject, _, html = build_exam_invitation_content(exam_title, invite_link, mode)
+        subject, _, html = build_exam_invitation_content(
+            exam_title, invite_link, mode, starts_at=starts_at, closes_at=closes_at
+        )
         logger.info(
             "Enviando invitación SMTP: to=%s exam=%s host=%s:%s",
             to_email,
@@ -99,7 +133,13 @@ class SmtpEmailService(EmailService):
 
 class MailtrapEmailService(EmailService):
     async def send_exam_invitation(
-        self, to_email: str, exam_title: str, invite_link: str, mode: str
+        self,
+        to_email: str,
+        exam_title: str,
+        invite_link: str,
+        mode: str,
+        starts_at: datetime | None = None,
+        closes_at: datetime | None = None,
     ) -> bool:
         if not settings.mailtrap_api_token:
             logger.error(
@@ -107,7 +147,9 @@ class MailtrapEmailService(EmailService):
             )
             return False
 
-        subject, text, html = build_exam_invitation_content(exam_title, invite_link, mode)
+        subject, text, html = build_exam_invitation_content(
+            exam_title, invite_link, mode, starts_at=starts_at, closes_at=closes_at
+        )
         payload = {
             "from": {
                 "email": settings.mailtrap_from_email,
@@ -168,11 +210,24 @@ class MockEmailService(EmailService):
     sent_emails: list[dict] = []
 
     async def send_exam_invitation(
-        self, to_email: str, exam_title: str, invite_link: str, mode: str
+        self,
+        to_email: str,
+        exam_title: str,
+        invite_link: str,
+        mode: str,
+        starts_at: datetime | None = None,
+        closes_at: datetime | None = None,
     ) -> bool:
         logger.info("Mock email: to=%s exam=%s link=%s", to_email, exam_title, invite_link)
         self.sent_emails.append(
-            {"to": to_email, "title": exam_title, "link": invite_link, "mode": mode}
+            {
+                "to": to_email,
+                "title": exam_title,
+                "link": invite_link,
+                "mode": mode,
+                "starts_at": starts_at,
+                "closes_at": closes_at,
+            }
         )
         return True
 

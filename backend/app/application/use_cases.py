@@ -840,7 +840,12 @@ class InviteToExamUseCase:
                 invite_link,
             )
             sent = await self._email_service.send_exam_invitation(
-                email, exam.title, invite_link, exam.mode.value
+                email,
+                exam.title,
+                invite_link,
+                exam.mode.value,
+                starts_at=exam.starts_at,
+                closes_at=exam.closes_at,
             )
             invitation.status = InvitationStatus.SENT if sent else InvitationStatus.PENDING
             invitation.sent_at = datetime.now(timezone.utc) if sent else None
@@ -1021,7 +1026,12 @@ class ResendExamInvitationUseCase:
 
         invite_link = f"{self._frontend_url}/exam/take/{invitation.token}"
         sent = await self._email_service.send_exam_invitation(
-            invitation.invitee_email, exam.title, invite_link, exam.mode.value
+            invitation.invitee_email,
+            exam.title,
+            invite_link,
+            exam.mode.value,
+            starts_at=exam.starts_at,
+            closes_at=exam.closes_at,
         )
         invitation.status = InvitationStatus.SENT if sent else InvitationStatus.PENDING
         invitation.sent_at = datetime.now(timezone.utc) if sent else invitation.sent_at

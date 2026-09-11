@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
@@ -56,7 +57,13 @@ class MfaService(ABC):
 class EmailService(ABC):
     @abstractmethod
     async def send_exam_invitation(
-        self, to_email: str, exam_title: str, invite_link: str, mode: str
+        self,
+        to_email: str,
+        exam_title: str,
+        invite_link: str,
+        mode: str,
+        starts_at: datetime | None = None,
+        closes_at: datetime | None = None,
     ) -> bool: ...
 
 

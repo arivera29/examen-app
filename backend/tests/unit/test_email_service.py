@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -6,19 +7,36 @@ import pytest
 from app.infrastructure.services.email_service import (
     MailtrapEmailService,
     build_exam_invitation_content,
+    format_invitation_datetime,
     get_email_service,
 )
 
 
-def test_build_exam_invitation_content():
+def test_build_exam_invitation_content_includes_schedule():
+    starts_at = datetime(2026, 9, 15, 14, 0, tzinfo=timezone.utc)
+    closes_at = datetime(2026, 9, 15, 16, 30, tzinfo=timezone.utc)
+
     subject, text, html = build_exam_invitation_content(
-        "Matemáticas", "https://app.test/exam/take/abc", "simulation"
+        "Matemáticas",
+        "https://app.test/exam/take/abc",
+        "simulation",
+        starts_at=starts_at,
+        closes_at=closes_at,
     )
 
     assert subject == "Invitación al examen: Matemáticas"
     assert "Matemáticas" in text
     assert "Simulacro" in text
+    assert "Inicio:" in text
+    assert "Finalización:" in text
+    assert format_invitation_datetime(starts_at) in text
+    assert format_invitation_datetime(closes_at) in html
     assert "https://app.test/exam/take/abc" in html
+
+
+def test_format_invitation_datetime_converts_to_colombia():
+    value = datetime(2026, 9, 15, 19, 0, tzinfo=timezone.utc)
+    assert format_invitation_datetime(value) == "15/09/2026 14:00 (hora Colombia)"
 
 
 @pytest.mark.asyncio
@@ -26,11 +44,16 @@ async def test_mailtrap_email_service_sends_invitation():
     service = MailtrapEmailService()
     mock_response = MagicMock()
     mock_response.raise_for_status = MagicMock()
+    mock_response.status_code = 200
+    mock_response.text = "ok"
 
     mock_client = AsyncMock()
     mock_client.post = AsyncMock(return_value=mock_response)
     mock_client.__aenter__ = AsyncMock(return_value=mock_client)
     mock_client.__aexit__ = AsyncMock(return_value=None)
+
+    starts_at = datetime(2026, 9, 15, 14, 0, tzinfo=timezone.utc)
+    closes_at = datetime(2026, 9, 15, 16, 30, tzinfo=timezone.utc)
 
     with patch("app.infrastructure.services.email_service.httpx.AsyncClient", return_value=mock_client):
         with patch("app.infrastructure.services.email_service.settings") as mock_settings:
@@ -45,6 +68,8 @@ async def test_mailtrap_email_service_sends_invitation():
                 "Examen demo",
                 "https://app.test/exam/take/token",
                 "real",
+                starts_at=starts_at,
+                closes_at=closes_at,
             )
 
     assert sent is True
@@ -56,6 +81,8 @@ async def test_mailtrap_email_service_sends_invitation():
     assert payload["to"] == [{"email": "aimer.rivera@are-soluciones.com"}]
     assert payload["category"] == "Examen App"
     assert "Examen demo" in payload["subject"]
+    assert format_invitation_datetime(starts_at) in payload["text"]
+    assert format_invitation_datetime(closes_at) in payload["html"]
 
 
 @pytest.mark.asyncio
