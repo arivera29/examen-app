@@ -22,7 +22,8 @@
       </h1>
       @if (examTerminatedForViolation) {
         <p class="violation-message">
-          El examen fue cerrado por cambiar de pestaña o ventana. No podrás realizar más intentos.
+          El examen fue cerrado por cambiar de pestaña o por ocultar/minimizar la página del examen.
+          No podrás realizar más intentos.
         </p>
       }
       @if (finalScore !== null && displayTotalScore !== null) {
@@ -104,7 +105,9 @@
         </p>
       }
       <p class="tab-policy-hint">
-        Si cambias de pestaña o ventana durante el examen, este se cerrará de inmediato y no podrás realizar más intentos.
+        Si cambias de pestaña del navegador o minimizas/ocultas esta página durante el examen,
+        este se cerrará de inmediato y no podrás realizar más intentos. Las notificaciones de otras
+        aplicaciones no anulan el examen.
       </p>
 
       @if (inviteeEmail) {

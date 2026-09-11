@@ -131,7 +131,6 @@ export class ExamTakeComponent implements OnInit, OnDestroy {
     this.loadSessionInfo();
     document.addEventListener('mousemove', this.onMouseMove);
     document.addEventListener('visibilitychange', this.onVisibilityChange);
-    window.addEventListener('blur', this.onWindowBlur);
   }
 
   private restorePreparingState(): void {
@@ -370,7 +369,6 @@ export class ExamTakeComponent implements OnInit, OnDestroy {
     this.stopCamera();
     document.removeEventListener('mousemove', this.onMouseMove);
     document.removeEventListener('visibilitychange', this.onVisibilityChange);
-    window.removeEventListener('blur', this.onWindowBlur);
   }
 
   private onMouseMove = (e: MouseEvent): void => {
@@ -382,14 +380,12 @@ export class ExamTakeComponent implements OnInit, OnDestroy {
   };
 
   private onVisibilityChange = (): void => {
+    // Solo anular cuando la pestaña/página deja de ser visible.
+    // No usar window.blur: notificaciones u otras apps pueden quitar el foco
+    // sin ocultar el examen y no deben cerrarlo.
     if (document.hidden) {
       void this.handleTabSwitchViolation();
     }
-  };
-
-  private onWindowBlur = (): void => {
-    if (document.hidden || document.hasFocus()) return;
-    void this.handleTabSwitchViolation();
   };
 
   private async handleTabSwitchViolation(): Promise<void> {
@@ -442,7 +438,7 @@ export class ExamTakeComponent implements OnInit, OnDestroy {
       await this.completeViolationTermination({
         final_score: score,
         message:
-          'El examen fue cerrado por cambiar de pestaña o ventana. No podrás realizar más intentos.',
+          'El examen fue cerrado por cambiar de pestaña o por ocultar/minimizar la página. No podrás realizar más intentos.',
       });
       return true;
     } catch {
