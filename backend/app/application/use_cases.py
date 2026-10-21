@@ -587,7 +587,9 @@ class RestoreQuestionBankBackupUseCase:
         return created.id
 
 
-def _resolve_exam_schedule(exam_data: dict) -> tuple[datetime, datetime]:
+def _resolve_exam_schedule(
+    exam_data: dict, *, require_future_close: bool = True
+) -> tuple[datetime, datetime]:
     closes_at = exam_data["closes_at"]
     if closes_at.tzinfo is None:
         closes_at = closes_at.replace(tzinfo=timezone.utc)
@@ -596,7 +598,7 @@ def _resolve_exam_schedule(exam_data: dict) -> tuple[datetime, datetime]:
     if starts_at.tzinfo is None:
         starts_at = starts_at.replace(tzinfo=timezone.utc)
 
-    if closes_at <= datetime.now(timezone.utc):
+    if require_future_close and closes_at <= datetime.now(timezone.utc):
         raise ValidationError("La fecha de cierre debe ser futura")
     if starts_at >= closes_at:
         raise ValidationError("La fecha de inicio debe ser anterior a la fecha de cierre")
@@ -732,13 +734,18 @@ class UpdateExamUseCase:
             raise ValidationError("Not enough questions in bank")
 
         if exam_data.get("random_selection", True):
-            selected = []
+            selected_ids: list = []
             configs = []
         else:
-            selected_ids = exam_data.get("selected_question_ids", [])
+            selected_ids = list(exam_data.get("selected_question_ids") or [])
+            # El formulario de edición no envía las preguntas fijas; conservar las actuales.
+            if not selected_ids and exam.selected_question_ids:
+                selected_ids = list(exam.selected_question_ids)
             if len(selected_ids) != exam_data["question_count"]:
                 raise ValidationError("Must select exact question count")
             selected = self._question_repo.list_by_ids(selected_ids)
+            if len(selected) != len(selected_ids):
+                raise ValidationError("Some selected questions were not found")
             point_shares = distribute_question_points(
                 exam_data["total_score"], exam_data["question_count"]
             )
@@ -752,7 +759,7 @@ class UpdateExamUseCase:
                 for i, q in enumerate(selected)
             ]
 
-        starts_at, closes_at = _resolve_exam_schedule(exam_data)
+        starts_at, closes_at = _resolve_exam_schedule(exam_data, require_future_close=False)
 
         cooldown_enabled, cooldown_seconds = _resolve_attempt_cooldown_settings(exam_data)
         require_camera, require_attempt_video = _resolve_camera_settings(exam_data)
@@ -774,7 +781,7 @@ class UpdateExamUseCase:
         exam.proctoring_sensitivity = exam_data.get("proctoring_sensitivity", exam.proctoring_sensitivity)
         exam.attempt_cooldown_enabled = cooldown_enabled
         exam.attempt_cooldown_seconds = cooldown_seconds
-        exam.selected_question_ids = [q.id for q in selected]
+        exam.selected_question_ids = selected_ids
         exam.question_configs = configs
         return self._exam_repo.update(exam)
 

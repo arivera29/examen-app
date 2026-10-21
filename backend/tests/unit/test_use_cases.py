@@ -1098,6 +1098,65 @@ class TestUpdateExamUseCase:
         assert updated.total_score == 60
         assert len(updated.selected_question_ids) == 2
 
+    def test_preserves_selected_questions_when_ids_omitted(self):
+        exam_id = uuid4()
+        owner_id = uuid4()
+        bank_id = uuid4()
+        bank = QuestionBank(name="Bank", description="", owner_id=owner_id, id=bank_id)
+        questions = [
+            Question(
+                text=f"Q{i}",
+                question_type=QuestionType.SINGLE_CHOICE,
+                time_seconds=60,
+                owner_id=owner_id,
+                options=[QuestionOption(text="A", is_correct=True)],
+            )
+            for i in range(3)
+        ]
+        existing_ids = [questions[0].id, questions[1].id]
+        exam = Exam(
+            title="Old",
+            description="",
+            owner_id=owner_id,
+            question_bank_id=bank_id,
+            mode=ExamMode.SIMULATION,
+            total_score=50,
+            question_count=2,
+            closes_at=FUTURE_CLOSES_AT,
+            random_selection=False,
+            selected_question_ids=existing_ids,
+            id=exam_id,
+        )
+        exam_repo = MagicMock()
+        exam_repo.get_by_id.return_value = exam
+        exam_repo.update.side_effect = lambda e: e
+        bank_repo = MagicMock()
+        bank_repo.get_by_id.return_value = bank
+        question_repo = MagicMock()
+        question_repo.list_by_bank.return_value = questions
+        question_repo.list_by_ids.return_value = questions[:2]
+        attempt_repo = MagicMock()
+        attempt_repo.list_by_exam.return_value = []
+
+        use_case = UpdateExamUseCase(exam_repo, bank_repo, question_repo, attempt_repo)
+        updated = use_case.execute(
+            owner_id,
+            exam_id,
+            {
+                "title": "Updated title only",
+                "description": "",
+                "question_bank_id": bank_id,
+                "mode": ExamMode.SIMULATION,
+                "total_score": 50,
+                "question_count": 2,
+                "closes_at": FUTURE_CLOSES_AT,
+                "random_selection": False,
+                "selected_question_ids": [],
+            },
+        )
+        assert updated.title == "Updated title only"
+        assert updated.selected_question_ids == existing_ids
+
 
 class TestDeleteExamUseCase:
     def test_delete_exam_without_attempts(self):

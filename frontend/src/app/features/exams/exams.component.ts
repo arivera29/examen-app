@@ -65,7 +65,9 @@ export class ExamsComponent implements OnInit {
     attempt_policy: ['flexible', Validators.required],
     proctoring_sensitivity: [4, [Validators.required, Validators.min(1), Validators.max(10)]],
     attempt_cooldown_enabled: [false],
-    attempt_cooldown_seconds: [60, [Validators.min(1)]],
+    // min(1) se valida en saveExam solo si el cooldown está activo;
+    // con cooldown desactivado el backend guarda 0 y min(1) bloqueaba el form en silencio.
+    attempt_cooldown_seconds: [60],
   });
 
   defaultStartsAtLocal(): string {
@@ -184,7 +186,10 @@ export class ExamsComponent implements OnInit {
       attempt_policy: exam.attempt_policy,
       proctoring_sensitivity: Math.round((exam.proctoring_sensitivity ?? 0.4) * 10),
       attempt_cooldown_enabled: exam.attempt_cooldown_enabled ?? false,
-      attempt_cooldown_seconds: exam.attempt_cooldown_seconds ?? 60,
+      attempt_cooldown_seconds:
+        exam.attempt_cooldown_seconds && exam.attempt_cooldown_seconds > 0
+          ? exam.attempt_cooldown_seconds
+          : 60,
     });
     if (exam.has_attempts) {
       this.form.get('question_bank_id')?.disable();
@@ -215,9 +220,23 @@ export class ExamsComponent implements OnInit {
   }
 
   saveExam(): void {
-    if (this.form.invalid) return;
+    if (this.form.invalid) {
+      this.form.markAllAsTouched();
+      this.snackBar.open('Revisa los campos del formulario; hay datos inválidos', 'Cerrar', {
+        duration: 4000,
+      });
+      return;
+    }
 
     const raw = this.form.getRawValue();
+    const title = String(raw.title ?? '').trim();
+    if (!title) {
+      this.form.get('title')?.setErrors({ required: true });
+      this.form.get('title')?.markAsTouched();
+      this.snackBar.open('El título es obligatorio', 'Cerrar', { duration: 4000 });
+      return;
+    }
+
     const startsAt = new Date(String(raw.starts_at));
     const closesAt = new Date(String(raw.closes_at));
     if (Number.isNaN(startsAt.getTime()) || Number.isNaN(closesAt.getTime())) {
@@ -244,7 +263,7 @@ export class ExamsComponent implements OnInit {
     }
 
     const data = {
-      title: String(raw.title ?? '').trim(),
+      title,
       description: String(raw.description ?? '').trim(),
       question_bank_id: String(raw.question_bank_id ?? ''),
       mode: String(raw.mode ?? 'simulation'),
