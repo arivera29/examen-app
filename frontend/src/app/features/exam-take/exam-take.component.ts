@@ -653,7 +653,7 @@ export class ExamTakeComponent implements OnInit, OnDestroy {
 
   nextQuestion(): void {
     if (this.enforceQuestionTime) {
-      this.advanceFromCurrentQuestion(false);
+      void this.advanceFromCurrentQuestion(false);
       return;
     }
     this.saveCurrentAnswer();
@@ -730,9 +730,14 @@ export class ExamTakeComponent implements OnInit, OnDestroy {
     if (!this.session || this.isSubmitting) return;
 
     this.isSubmitting = true;
-    this.saveCurrentAnswer();
 
     try {
+      try {
+        await this.saveCurrentAnswerAsync();
+      } catch {
+        // Si falla guardar la última respuesta, igual se intenta finalizar con lo ya persistido.
+      }
+
       let skipVideoRequired = false;
       if (this.requiresAttemptVideo) {
         const uploaded = await this.tryUploadAttemptVideo();
@@ -1028,7 +1033,7 @@ export class ExamTakeComponent implements OnInit, OnDestroy {
     }
   }
 
-  private advanceFromCurrentQuestion(timedOut: boolean): void {
+  private async advanceFromCurrentQuestion(timedOut: boolean): Promise<void> {
     if (!this.session || this.examFinished) return;
 
     const q = this.currentQuestion;
@@ -1037,7 +1042,16 @@ export class ExamTakeComponent implements OnInit, OnDestroy {
     if (this.enforceQuestionTime && !timedOut && !this.isAnswered(q.id)) return;
 
     this.stopQuestionTimer();
-    this.saveCurrentAnswer();
+
+    // Solo persistir si hay respuesta; timeout sin respuesta = 0 puntos, no incorrecta.
+    if (this.isAnswered(q.id)) {
+      try {
+        await this.saveCurrentAnswerAsync();
+      } catch {
+        // Continuar el avance aunque falle el guardado puntual.
+      }
+    }
+
     this.lockedQuestionIds.add(q.id);
 
     if (timedOut) {
@@ -1058,7 +1072,7 @@ export class ExamTakeComponent implements OnInit, OnDestroy {
   }
 
   private onQuestionTimeExpired(): void {
-    this.advanceFromCurrentQuestion(true);
+    void this.advanceFromCurrentQuestion(true);
   }
 
   private startTimer(): void {

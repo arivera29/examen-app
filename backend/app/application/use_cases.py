@@ -15,10 +15,14 @@ from app.application.attempt_fraud import compute_attempt_fraud_score, resolve_f
 from app.application.proctoring_sensitivity import scale_fraud_confidence, should_flag_fraud
 from app.application.attempt_questions import (
     assign_attempt_questions,
-    get_attempt_question_configs,
     get_attempt_question_id_set,
     resolve_attempt_question_configs,
     summarize_attempt_answers,
+)
+from app.application.attempt_scoring import (
+    compute_attempt_score,
+    distribute_question_points,
+    points_for_question,
 )
 from app.application.exam_timing import (
     get_remaining_seconds,
@@ -650,12 +654,14 @@ class CreateExamUseCase:
             if len(selected_ids) != exam_data["question_count"]:
                 raise ValidationError("Must select exact question count")
             selected = self._question_repo.list_by_ids(selected_ids)
-            points_per_question = exam_data["total_score"] / exam_data["question_count"]
+            point_shares = distribute_question_points(
+                exam_data["total_score"], exam_data["question_count"]
+            )
             configs = [
                 ExamQuestionConfig(
                     question_id=q.id,
                     order=i,
-                    points=points_per_question,
+                    points=point_shares[i],
                     time_seconds=q.time_seconds,
                 )
                 for i, q in enumerate(selected)
@@ -733,12 +739,14 @@ class UpdateExamUseCase:
             if len(selected_ids) != exam_data["question_count"]:
                 raise ValidationError("Must select exact question count")
             selected = self._question_repo.list_by_ids(selected_ids)
-            points_per_question = exam_data["total_score"] / exam_data["question_count"]
+            point_shares = distribute_question_points(
+                exam_data["total_score"], exam_data["question_count"]
+            )
             configs = [
                 ExamQuestionConfig(
                     question_id=q.id,
                     order=i,
-                    points=points_per_question,
+                    points=point_shares[i],
                     time_seconds=q.time_seconds,
                 )
                 for i, q in enumerate(selected)
@@ -1204,11 +1212,13 @@ class SubmitAnswerUseCase:
         exam: Exam,
         attempt: ExamAttempt,
     ) -> tuple[bool | None, float]:
-        configs = get_attempt_question_configs(exam, attempt)
-        config = next((item for item in configs if item.question_id == question.id), None)
-        points_value = config.points if config else 0.0
+        points_value = points_for_question(exam, attempt, question.id)
 
         if question.question_type == QuestionType.OPEN:
+            return None, 0.0
+
+        # Sin selección = no respondida (p. ej. timeout). No cuenta como incorrecta.
+        if not selected_option_ids:
             return None, 0.0
 
         correct_ids = {o.id for o in question.options if o.is_correct}
@@ -1298,10 +1308,9 @@ class SubmitExamUseCase:
             allowed_question_ids = get_attempt_question_id_set(exam, attempt)
             if allowed_question_ids:
                 answers = [answer for answer in answers if answer.question_id in allowed_question_ids]
-
-        total_score = sum(a.points_earned for a in answers)
-        if exam:
-            total_score = min(round(total_score, 2), exam.total_score)
+            total_score = compute_attempt_score(exam, attempt, answers)
+        else:
+            total_score = round(sum(a.points_earned for a in answers), 2)
 
         attempt.score = total_score
         attempt.status = AttemptStatus.SUBMITTED
@@ -1641,8 +1650,19 @@ class GetExamReportUseCase:
                 events,
                 exam.proctoring_sensitivity,
             )
-            if report_attempt.status == AttemptStatus.SUBMITTED and report_attempt.score is not None:
-                final_scores.append(report_attempt.score)
+            # Preferir recálculo cuando hay respuestas calificadas; si no, usar score guardado.
+            recomputed_score = compute_attempt_score(exam, report_attempt, answers)
+            has_graded_answers = any(answer.is_correct is True for answer in answers)
+            if is_finished_attempt(report_attempt):
+                display_score = (
+                    recomputed_score
+                    if has_graded_answers or report_attempt.score is None
+                    else report_attempt.score
+                )
+            else:
+                display_score = report_attempt.score
+            if report_attempt.status == AttemptStatus.SUBMITTED and display_score is not None:
+                final_scores.append(display_score)
                 completed_correct_counts.append(correct_answers_count)
                 completed_incorrect_counts.append(incorrect_answers_count)
 
@@ -1653,11 +1673,11 @@ class GetExamReportUseCase:
                     "attempts_used": len(finished),
                     "invitee_email": invitation.invitee_email if invitation else "",
                     "invitee_full_name": report_attempt.invitee_full_name,
-                    "score": report_attempt.score,
+                    "score": display_score,
                     "total_score": exam.total_score,
                     "percentage": (
-                        (report_attempt.score / exam.total_score * 100)
-                        if report_attempt.score is not None and exam.total_score
+                        (display_score / exam.total_score * 100)
+                        if display_score is not None and exam.total_score
                         else 0
                     ),
                     "status": report_attempt.status.value,
@@ -1763,6 +1783,18 @@ class GetAttemptAnswersReportUseCase:
                 continue
             answer = answers_by_question.get(config.question_id)
             selected_options = self._selected_option_texts(question, answer)
+            has_response = bool(
+                answer
+                and (
+                    answer.selected_option_ids
+                    or (answer.open_text and answer.open_text.strip())
+                )
+            )
+            points_earned = (
+                float(config.points)
+                if answer is not None and answer.is_correct is True
+                else 0.0
+            )
             answer_details.append(
                 {
                     "question_id": str(question.id),
@@ -1773,13 +1805,24 @@ class GetAttemptAnswersReportUseCase:
                     "correct_options": [option.text for option in question.options if option.is_correct],
                     "open_text": answer.open_text if answer else None,
                     "is_correct": answer.is_correct if answer else None,
-                    "points_earned": answer.points_earned if answer else 0,
+                    "points_earned": points_earned,
                     "max_points": config.points,
-                    "answered": answer is not None,
+                    "answered": has_response,
                 }
             )
 
         snapshots = self._snapshot_repo.list_by_attempt(attempt_id)
+        all_answers = list(answers_by_question.values())
+        recomputed_score = compute_attempt_score(exam, attempt, all_answers)
+        has_graded_answers = any(answer.is_correct is True for answer in all_answers)
+        if is_finished_attempt(attempt):
+            display_score = (
+                recomputed_score
+                if has_graded_answers or attempt.score is None
+                else attempt.score
+            )
+        else:
+            display_score = attempt.score
 
         return {
             "attempt_id": str(attempt.id),
@@ -1787,7 +1830,7 @@ class GetAttemptAnswersReportUseCase:
             "invitee_email": invitation.invitee_email if invitation else "",
             "invitee_full_name": attempt.invitee_full_name,
             "exam_title": exam.title,
-            "score": attempt.score,
+            "score": display_score,
             "total_score": exam.total_score,
             "answers": answer_details,
             "video_url": attempt.attempt_video_url,

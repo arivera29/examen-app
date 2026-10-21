@@ -528,6 +528,64 @@ class TestSubmitAnswerUseCase:
         assert answer.is_correct is True
         assert answer.points_earned > 0
 
+    def test_empty_selection_is_unanswered_not_incorrect(self):
+        owner_id = uuid4()
+        question_id = uuid4()
+        option_id = uuid4()
+        exam_id = uuid4()
+        attempt_id = uuid4()
+
+        question = Question(
+            id=question_id,
+            text="Test",
+            question_type=QuestionType.SINGLE_CHOICE,
+            time_seconds=60,
+            owner_id=owner_id,
+            options=[QuestionOption(id=option_id, text="Correct", is_correct=True)],
+        )
+        exam = Exam(
+            title="Exam",
+            description="",
+            owner_id=owner_id,
+            question_bank_id=uuid4(),
+            mode=ExamMode.REAL,
+            total_score=5,
+            question_count=10,
+            closes_at=FUTURE_CLOSES_AT,
+            random_selection=True,
+            id=exam_id,
+        )
+        attempt = ExamAttempt(
+            id=attempt_id,
+            invitation_id=uuid4(),
+            exam_id=exam_id,
+            status=AttemptStatus.IN_PROGRESS,
+            selected_question_ids=[question_id],
+            question_configs=[
+                ExamQuestionConfig(
+                    question_id=question_id,
+                    order=0,
+                    points=0.5,
+                    time_seconds=60,
+                )
+            ],
+        )
+
+        attempt_repo = MagicMock()
+        attempt_repo.get_by_id.return_value = attempt
+        answer_repo = MagicMock()
+        answer_repo.upsert.side_effect = lambda a: a
+        exam_repo = MagicMock()
+        exam_repo.get_by_id.return_value = exam
+        question_repo = MagicMock()
+        question_repo.get_by_id.return_value = question
+
+        use_case = SubmitAnswerUseCase(attempt_repo, answer_repo, exam_repo, question_repo)
+        answer = use_case.execute(attempt_id, question_id, [])
+
+        assert answer.is_correct is None
+        assert answer.points_earned == 0.0
+
 
 class TestGetAttemptAnswersReportUseCase:
     def test_builds_answer_details_for_attempt(self):
@@ -1490,12 +1548,20 @@ class TestSubmitExamUseCase:
         attempt_repo.get_by_id.return_value = attempt
         attempt_repo.update.side_effect = lambda item: item
         answer_repo = MagicMock()
+        qids = [uuid4() for _ in range(5)]
+        attempt.selected_question_ids = qids
+        attempt.question_configs = [
+            ExamQuestionConfig(question_id=qid, order=i, points=1.1, time_seconds=60)
+            for i, qid in enumerate(qids)
+        ]
         answer_repo.get_by_attempt.return_value = [
-            Answer(attempt_id=attempt_id, question_id=uuid4(), points_earned=1.1),
-            Answer(attempt_id=attempt_id, question_id=uuid4(), points_earned=1.1),
-            Answer(attempt_id=attempt_id, question_id=uuid4(), points_earned=1.1),
-            Answer(attempt_id=attempt_id, question_id=uuid4(), points_earned=1.1),
-            Answer(attempt_id=attempt_id, question_id=uuid4(), points_earned=1.1),
+            Answer(
+                attempt_id=attempt_id,
+                question_id=qid,
+                is_correct=True,
+                points_earned=1.1,
+            )
+            for qid in qids
         ]
         invitation_repo = MagicMock()
         invitation_repo.get_by_id.return_value = invitation

@@ -6,6 +6,23 @@ from app.domain.entities import Answer, Exam, ExamAttempt, ExamQuestionConfig, Q
 from app.domain.repositories import QuestionRepository
 
 
+def distribute_question_points(total_score: float, question_count: int) -> list[float]:
+    """Split total_score into question_count shares that sum exactly to total_score."""
+    if question_count <= 0:
+        return []
+    total_cents = int(round(float(total_score) * 100))
+    if total_cents < 0:
+        raise ValueError("total_score must be non-negative")
+
+    base = total_cents // question_count
+    remainder = total_cents % question_count
+    points: list[float] = []
+    for index in range(question_count):
+        cents = base + (1 if index < remainder else 0)
+        points.append(cents / 100.0)
+    return points
+
+
 def get_attempt_question_configs(exam: Exam, attempt: ExamAttempt | None) -> list[ExamQuestionConfig]:
     if attempt and attempt.question_configs:
         return attempt.question_configs
@@ -105,21 +122,15 @@ def assign_attempt_questions(
         if len(selected) != exam.question_count:
             raise ValueError("Exam question configuration is invalid")
 
-    points_per_question = exam.total_score / exam.question_count
+    points_values = distribute_question_points(exam.total_score, exam.question_count)
     attempt.selected_question_ids = [question.id for question in selected]
     configs: list[ExamQuestionConfig] = []
-    assigned_points = 0.0
     for index, question in enumerate(selected):
-        if index == len(selected) - 1:
-            points = round(exam.total_score - assigned_points, 2)
-        else:
-            points = round(points_per_question, 2)
-            assigned_points += points
         configs.append(
             ExamQuestionConfig(
                 question_id=question.id,
                 order=index,
-                points=points,
+                points=points_values[index],
                 time_seconds=question.time_seconds,
             )
         )
@@ -132,12 +143,12 @@ def resolve_attempt_question_configs(exam: Exam, attempt: ExamAttempt) -> list[E
     if configs:
         return sorted(configs, key=lambda config: config.order)
     if attempt.selected_question_ids:
-        default_points = exam.total_score / exam.question_count if exam.question_count else 0
+        shares = distribute_question_points(exam.total_score, len(attempt.selected_question_ids))
         return [
             ExamQuestionConfig(
                 question_id=question_id,
                 order=index,
-                points=default_points,
+                points=shares[index],
                 time_seconds=0,
             )
             for index, question_id in enumerate(attempt.selected_question_ids)
