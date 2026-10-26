@@ -262,11 +262,38 @@ export class ApiService {
     }>(`${this.baseUrl}/exam-session/${token}/tab-switch-violation`, {});
   }
 
-  sendProctoringData(attemptId: string, frame: Blob, mouseEvents: unknown[]): Observable<unknown> {
+  sendProctoringData(
+    attemptId: string,
+    frame: Blob,
+    mouseEvents: unknown[]
+  ): Observable<{ fraud_detected: boolean; event: string | null }> {
     const formData = new FormData();
     formData.append('frame', frame, 'frame.jpg');
     formData.append('mouse_events', JSON.stringify(mouseEvents));
-    return this.http.post(`${this.baseUrl}/attempts/${attemptId}/proctoring`, formData);
+    return this.http.post<{ fraud_detected: boolean; event: string | null }>(
+      `${this.baseUrl}/attempts/${attemptId}/proctoring`,
+      formData
+    );
+  }
+
+  reportIntegrityEvent(
+    attemptId: string,
+    data: { event_type: string; confidence: number; metadata?: Record<string, unknown> }
+  ): Observable<{ fraud_detected: boolean; event: string | null }> {
+    return this.http.post<{ fraud_detected: boolean; event: string | null }>(
+      `${this.baseUrl}/attempts/${attemptId}/integrity-events`,
+      data
+    );
+  }
+
+  sendMouseIntegrity(
+    attemptId: string,
+    mouseEvents: unknown[]
+  ): Observable<{ fraud_detected: boolean; event: string | null }> {
+    return this.http.post<{ fraud_detected: boolean; event: string | null }>(
+      `${this.baseUrl}/attempts/${attemptId}/mouse-integrity`,
+      { mouse_events: mouseEvents }
+    );
   }
 
   uploadAttemptSnapshot(

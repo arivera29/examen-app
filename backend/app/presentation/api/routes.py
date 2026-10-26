@@ -59,7 +59,9 @@ from app.application.use_cases import (
     LoginInput,
     LoginUseCase,
     NotFoundError,
+    MouseIntegrityAnalysisUseCase,
     ProctoringAnalysisUseCase,
+    RecordIntegrityEventUseCase,
     RegisterUserInput,
     RegisterUserUseCase,
     ResendExamInvitationUseCase,
@@ -106,6 +108,8 @@ from app.presentation.schemas import (
     AttemptAnswerDetailResponse,
     AttemptAnswersReportResponse,
     AttemptResponse,
+    IntegrityEventRequest,
+    MouseIntegrityRequest,
     CreateExamRequest,
     CreateQuestionBankRequest,
     CreateTopicRequest,
@@ -833,6 +837,7 @@ def export_exam_attempts_answers(
         SQLAlchemyAnswerRepository(db),
         SQLAlchemyQuestionRepository(db),
         SQLAlchemyAttemptSnapshotRepository(db),
+        SQLAlchemyProctoringRepository(db),
     )
     use_case = ExportExamAttemptsAnswersUseCase(
         report_use_case,
@@ -888,6 +893,7 @@ def get_attempt_answers_report(
         SQLAlchemyAnswerRepository(db),
         SQLAlchemyQuestionRepository(db),
         SQLAlchemyAttemptSnapshotRepository(db),
+        SQLAlchemyProctoringRepository(db),
     )
     try:
         return use_case.execute(user_id, exam_id, attempt_id)
@@ -1284,6 +1290,56 @@ async def analyze_proctoring(
     try:
         event = use_case.execute(attempt_id, frame_data, events)
         return {"fraud_detected": event is not None, "event": event.event_type.value if event else None}
+    except DomainError as e:
+        _handle_domain_error(e)
+
+
+@router.post("/attempts/{attempt_id}/integrity-events")
+def record_integrity_event(
+    attempt_id: UUID,
+    request: IntegrityEventRequest,
+    db: Session = Depends(get_db),
+):
+    use_case = RecordIntegrityEventUseCase(
+        SQLAlchemyAttemptRepository(db),
+        SQLAlchemyExamRepository(db),
+        SQLAlchemyProctoringRepository(db),
+        settings.proctoring_fraud_threshold,
+    )
+    try:
+        event = use_case.execute(
+            attempt_id,
+            request.event_type,
+            request.confidence,
+            request.metadata,
+        )
+        return {
+            "fraud_detected": event is not None,
+            "event": event.event_type.value if event else None,
+        }
+    except DomainError as e:
+        _handle_domain_error(e)
+
+
+@router.post("/attempts/{attempt_id}/mouse-integrity")
+def analyze_mouse_integrity(
+    attempt_id: UUID,
+    request: MouseIntegrityRequest,
+    db: Session = Depends(get_db),
+):
+    use_case = MouseIntegrityAnalysisUseCase(
+        SQLAlchemyAttemptRepository(db),
+        SQLAlchemyExamRepository(db),
+        SQLAlchemyProctoringRepository(db),
+        MLProctoringService(),
+        settings.proctoring_fraud_threshold,
+    )
+    try:
+        event = use_case.execute(attempt_id, request.mouse_events)
+        return {
+            "fraud_detected": event is not None,
+            "event": event.event_type.value if event else None,
+        }
     except DomainError as e:
         _handle_domain_error(e)
 

@@ -6,7 +6,12 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { ApiService } from '../../../core/services/api.service';
-import { AttemptAnswersReport, AttemptSnapshot, IndividualReport } from '../../../core/models';
+import {
+  AttemptAnswersReport,
+  AttemptSnapshot,
+  IndividualReport,
+  IntegrityEventDetail,
+} from '../../../core/models';
 import { MarkdownContentComponent } from '../../../shared/markdown/markdown-content.component';
 
 export interface AttemptAnswersDialogData {
@@ -82,5 +87,25 @@ export class AttemptAnswersDialogComponent implements OnInit {
 
   snapshotLabel(snapshot: AttemptSnapshot): string {
     return snapshot.snapshot_type === 'start' ? 'Inicio del examen' : 'Durante el examen';
+  }
+
+  integrityEventLabel(event: IntegrityEventDetail): string {
+    const labels: Record<string, string> = {
+      eye_movement: 'Movimiento ocular sospechoso',
+      facial_expression: 'Expresión facial anómala',
+      mouse_anomaly: 'Movimiento de puntero anómalo',
+      no_face: 'Rostro no detectado',
+      multiple_faces: 'Varios rostros detectados',
+      tab_switch: 'Cambio de pestaña / página oculta',
+      clipboard_copy: 'Intento de copiar contenido',
+      clipboard_paste: 'Intento de pegar contenido',
+      idle_suspicious: 'Inactividad prolongada',
+      ai_assist_suspected: 'Posible extensión de IA',
+      devtools_suspected: 'Posibles herramientas de desarrollador',
+      right_click: 'Menú contextual',
+      print_attempt: 'Intento de impresión',
+      shortcut_blocked: 'Atajo de teclado bloqueado',
+    };
+    return labels[event.event_type] ?? event.event_type;
   }
 }

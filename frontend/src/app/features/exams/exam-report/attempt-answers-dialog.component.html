@@ -15,7 +15,29 @@
   } @else if (detail) {
     <p class="summary">
       Calificación: {{ detail.score ?? '-' }} / {{ detail.total_score }}
+      @if (detail.fraud_score != null) {
+        · Integridad: {{ (detail.fraud_score * 100) | number:'1.0-0' }}% fraude
+      }
     </p>
+
+    @if (detail.integrity_events?.length) {
+      <section class="integrity-section">
+        <h3>Eventos de integridad</h3>
+        <ul class="integrity-list">
+          @for (event of detail.integrity_events; track event.id) {
+            <li class="integrity-item">
+              <span class="integrity-type">{{ integrityEventLabel(event) }}</span>
+              <span class="integrity-meta">
+                {{ (event.confidence * 100) | number:'1.0-0' }}%
+                @if (event.created_at) {
+                  · {{ event.created_at | date:'short' }}
+                }
+              </span>
+            </li>
+          }
+        </ul>
+      </section>
+    }
 
     @if (detail.snapshots?.length) {
       <section class="snapshots-section">

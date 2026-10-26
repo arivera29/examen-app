@@ -23,14 +23,9 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { ApiService } from '../../core/services/api.service';
 import { ExamSession, Question, SavedAnswer } from '../../core/models';
+import { ExamIntegrityService } from './exam-integrity.service';
 import { ExamLockdownService } from './exam-lockdown.service';
 import { MarkdownContentComponent } from '../../shared/markdown/markdown-content.component';
-
-interface MouseEventData {
-  x: number;
-  y: number;
-  t: number;
-}
 
 @Component({
   selector: 'app-exam-take',
@@ -61,6 +56,7 @@ export class ExamTakeComponent implements OnInit, OnDestroy {
   private readonly snackBar = inject(MatSnackBar);
   private readonly injector = inject(Injector);
   private readonly examLockdown = inject(ExamLockdownService);
+  private readonly examIntegrity = inject(ExamIntegrityService);
 
   token = '';
   inviteeFullName = '';
@@ -110,7 +106,6 @@ export class ExamTakeComponent implements OnInit, OnDestroy {
   answers: Record<string, string[]> = {};
   openAnswers: Record<string, string> = {};
   lockedQuestionIds = new Set<string>();
-  mouseEvents: MouseEventData[] = [];
 
   private timerInterval?: ReturnType<typeof setInterval>;
   private questionTimerInterval?: ReturnType<typeof setInterval>;
@@ -129,7 +124,6 @@ export class ExamTakeComponent implements OnInit, OnDestroy {
     this.token = this.route.snapshot.paramMap.get('token')!;
     this.restorePreparingState();
     this.loadSessionInfo();
-    document.addEventListener('mousemove', this.onMouseMove);
     document.addEventListener('visibilitychange', this.onVisibilityChange);
   }
 
@@ -359,6 +353,7 @@ export class ExamTakeComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.examLockdown.disable();
+    this.examIntegrity.stop();
     this.resetSnapshotPlan();
     this.stopVideoRecording(false);
     this.stopTimer();
@@ -367,17 +362,8 @@ export class ExamTakeComponent implements OnInit, OnDestroy {
     this.stopCooldownTimer();
     this.stopProctoring();
     this.stopCamera();
-    document.removeEventListener('mousemove', this.onMouseMove);
     document.removeEventListener('visibilitychange', this.onVisibilityChange);
   }
-
-  private onMouseMove = (e: MouseEvent): void => {
-    if (!this.examStarted || this.examFinished) return;
-    this.mouseEvents.push({ x: e.clientX, y: e.clientY, t: Date.now() });
-    if (this.mouseEvents.length > 100) {
-      this.mouseEvents = this.mouseEvents.slice(-50);
-    }
-  };
 
   private onVisibilityChange = (): void => {
     // Solo anular cuando la pestaña/página deja de ser visible.
@@ -402,6 +388,7 @@ export class ExamTakeComponent implements OnInit, OnDestroy {
     this.stopTimer();
     this.stopQuestionTimer();
     this.stopProctoring();
+    this.examIntegrity.stop();
     this.examLockdown.disable();
 
     try {
@@ -536,6 +523,11 @@ export class ExamTakeComponent implements OnInit, OnDestroy {
     }
 
     this.examLockdown.enable();
+    this.examIntegrity.start(session.attempt.id, {
+      cameraProctoringActive: this.requireCamera,
+      onFraudDetected: (message) =>
+        this.snackBar.open(message, 'OK', { duration: 3000 }),
+    });
     if (this.requireCamera) {
       this.startProctoring();
       this.scheduleAttachStream('exam');
@@ -769,6 +761,7 @@ export class ExamTakeComponent implements OnInit, OnDestroy {
     this.examFinished = true;
     this.finalScore = score;
     this.examLockdown.disable();
+    this.examIntegrity.stop();
     this.resetSnapshotPlan();
     this.stopVideoRecording(true);
     this.stopTimer();
@@ -1298,16 +1291,14 @@ export class ExamTakeComponent implements OnInit, OnDestroy {
     ctx.drawImage(video, 0, 0);
     canvas.toBlob((blob) => {
       if (blob && this.session) {
-        this.api
-          .sendProctoringData(this.session.attempt.id, blob, [...this.mouseEvents])
-          .subscribe({
-            next: (result: any) => {
-              if (result.fraud_detected) {
-                this.snackBar.open('Comportamiento sospechoso detectado', 'OK', { duration: 3000 });
-              }
-            },
-          });
-        this.mouseEvents = [];
+        const mouseEvents = this.examIntegrity.consumeMouseEvents();
+        this.api.sendProctoringData(this.session.attempt.id, blob, mouseEvents).subscribe({
+          next: (result) => {
+            if (result.fraud_detected) {
+              this.snackBar.open('Comportamiento sospechoso detectado', 'OK', { duration: 3000 });
+            }
+          },
+        });
       }
     }, 'image/jpeg', 0.7);
   }

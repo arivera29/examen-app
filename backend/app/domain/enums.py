@@ -46,6 +46,14 @@ class ProctoringEventType(str, Enum):
     NO_FACE = "no_face"
     MULTIPLE_FACES = "multiple_faces"
     TAB_SWITCH = "tab_switch"
+    CLIPBOARD_COPY = "clipboard_copy"
+    CLIPBOARD_PASTE = "clipboard_paste"
+    IDLE_SUSPICIOUS = "idle_suspicious"
+    AI_ASSIST_SUSPECTED = "ai_assist_suspected"
+    DEVTOOLS_SUSPECTED = "devtools_suspected"
+    RIGHT_CLICK = "right_click"
+    PRINT_ATTEMPT = "print_attempt"
+    SHORTCUT_BLOCKED = "shortcut_blocked"
 
 
 class SnapshotType(str, Enum):

@@ -185,6 +185,14 @@ export interface AttemptSnapshot {
   captured_at: string | null;
 }
 
+export interface IntegrityEventDetail {
+  id: string;
+  event_type: string;
+  confidence: number;
+  metadata?: Record<string, unknown>;
+  created_at: string | null;
+}
+
 export interface AttemptAnswersReport {
   attempt_id: string;
   invitee_email: string;
@@ -196,4 +204,7 @@ export interface AttemptAnswersReport {
   snapshots?: AttemptSnapshot[];
   video_url?: string | null;
   require_attempt_video?: boolean;
+  require_camera?: boolean;
+  fraud_score?: number;
+  integrity_events?: IntegrityEventDetail[];
 }

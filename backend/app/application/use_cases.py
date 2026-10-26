@@ -1483,6 +1483,20 @@ class PrepareNextAttemptUseCase:
         return {"prepared": True}
 
 
+CLIENT_INTEGRITY_EVENT_TYPES = frozenset(
+    {
+        ProctoringEventType.CLIPBOARD_COPY,
+        ProctoringEventType.CLIPBOARD_PASTE,
+        ProctoringEventType.IDLE_SUSPICIOUS,
+        ProctoringEventType.AI_ASSIST_SUSPECTED,
+        ProctoringEventType.DEVTOOLS_SUSPECTED,
+        ProctoringEventType.RIGHT_CLICK,
+        ProctoringEventType.PRINT_ATTEMPT,
+        ProctoringEventType.SHORTCUT_BLOCKED,
+    }
+)
+
+
 class ProctoringAnalysisUseCase:
     def __init__(
         self,
@@ -1513,6 +1527,60 @@ class ProctoringAnalysisUseCase:
         if not result.fraud_detected:
             return None
 
+        return self._persist_if_flagged(attempt, exam, result)
+
+    def _persist_if_flagged(self, attempt: ExamAttempt, exam: Exam, result) -> ProctoringEvent | None:
+        sensitivity = exam.proctoring_sensitivity
+        if not should_flag_fraud(result.confidence, sensitivity, self._fraud_threshold):
+            return None
+
+        scaled_confidence = scale_fraud_confidence(result.confidence, sensitivity)
+        event = ProctoringEvent(
+            attempt_id=attempt.id,
+            event_type=ProctoringEventType(result.event_type),
+            confidence=scaled_confidence,
+            metadata={
+                **result.details,
+                "raw_confidence": result.confidence,
+                "proctoring_sensitivity": sensitivity,
+            },
+        )
+        event = self._proctoring_repo.create(event)
+        attempt.fraud_score = min(1.0, max(attempt.fraud_score, scaled_confidence))
+        self._attempt_repo.update(attempt)
+        return event
+
+
+class MouseIntegrityAnalysisUseCase:
+    """Analiza movimiento del mouse sin requerir cámara."""
+
+    def __init__(
+        self,
+        attempt_repo: AttemptRepository,
+        exam_repo: ExamRepository,
+        proctoring_repo: ProctoringRepository,
+        proctoring_service: ProctoringService,
+        fraud_threshold: float = 0.7,
+    ):
+        self._attempt_repo = attempt_repo
+        self._exam_repo = exam_repo
+        self._proctoring_repo = proctoring_repo
+        self._proctoring_service = proctoring_service
+        self._fraud_threshold = fraud_threshold
+
+    def execute(self, attempt_id: UUID, mouse_events: list[dict]) -> ProctoringEvent | None:
+        attempt = self._attempt_repo.get_by_id(attempt_id)
+        if not attempt or attempt.status != AttemptStatus.IN_PROGRESS:
+            raise ValidationError("Attempt not in progress")
+
+        exam = self._exam_repo.get_by_id(attempt.exam_id)
+        if not exam:
+            raise NotFoundError("Exam not found")
+
+        result = self._proctoring_service.analyze_mouse_pattern(mouse_events or [])
+        if not result.fraud_detected:
+            return None
+
         sensitivity = exam.proctoring_sensitivity
         if not should_flag_fraud(result.confidence, sensitivity, self._fraud_threshold):
             return None
@@ -1520,12 +1588,74 @@ class ProctoringAnalysisUseCase:
         scaled_confidence = scale_fraud_confidence(result.confidence, sensitivity)
         event = ProctoringEvent(
             attempt_id=attempt_id,
-            event_type=ProctoringEventType(result.event_type),
+            event_type=ProctoringEventType.MOUSE_ANOMALY,
             confidence=scaled_confidence,
             metadata={
                 **result.details,
                 "raw_confidence": result.confidence,
                 "proctoring_sensitivity": sensitivity,
+                "source": "mouse_integrity",
+            },
+        )
+        event = self._proctoring_repo.create(event)
+        attempt.fraud_score = min(1.0, max(attempt.fraud_score, scaled_confidence))
+        self._attempt_repo.update(attempt)
+        return event
+
+
+class RecordIntegrityEventUseCase:
+    """Registra eventos de integridad reportados por el cliente (sin cámara)."""
+
+    def __init__(
+        self,
+        attempt_repo: AttemptRepository,
+        exam_repo: ExamRepository,
+        proctoring_repo: ProctoringRepository,
+        fraud_threshold: float = 0.7,
+    ):
+        self._attempt_repo = attempt_repo
+        self._exam_repo = exam_repo
+        self._proctoring_repo = proctoring_repo
+        self._fraud_threshold = fraud_threshold
+
+    def execute(
+        self,
+        attempt_id: UUID,
+        event_type: str,
+        confidence: float,
+        metadata: dict | None = None,
+    ) -> ProctoringEvent | None:
+        attempt = self._attempt_repo.get_by_id(attempt_id)
+        if not attempt or attempt.status != AttemptStatus.IN_PROGRESS:
+            raise ValidationError("Attempt not in progress")
+
+        exam = self._exam_repo.get_by_id(attempt.exam_id)
+        if not exam:
+            raise NotFoundError("Exam not found")
+
+        try:
+            parsed_type = ProctoringEventType(event_type)
+        except ValueError as exc:
+            raise ValidationError("Tipo de evento de integridad no válido") from exc
+
+        if parsed_type not in CLIENT_INTEGRITY_EVENT_TYPES:
+            raise ValidationError("Tipo de evento de integridad no permitido")
+
+        raw_confidence = min(1.0, max(0.0, float(confidence)))
+        sensitivity = exam.proctoring_sensitivity
+        if not should_flag_fraud(raw_confidence, sensitivity, self._fraud_threshold):
+            return None
+
+        scaled_confidence = scale_fraud_confidence(raw_confidence, sensitivity)
+        event = ProctoringEvent(
+            attempt_id=attempt_id,
+            event_type=parsed_type,
+            confidence=scaled_confidence,
+            metadata={
+                **(metadata or {}),
+                "raw_confidence": raw_confidence,
+                "proctoring_sensitivity": sensitivity,
+                "source": "client_integrity",
             },
         )
         event = self._proctoring_repo.create(event)
@@ -1753,6 +1883,7 @@ class GetAttemptAnswersReportUseCase:
         answer_repo: AnswerRepository,
         question_repo: QuestionRepository,
         snapshot_repo: AttemptSnapshotRepository,
+        proctoring_repo: ProctoringRepository | None = None,
     ):
         self._exam_repo = exam_repo
         self._attempt_repo = attempt_repo
@@ -1760,6 +1891,7 @@ class GetAttemptAnswersReportUseCase:
         self._answer_repo = answer_repo
         self._question_repo = question_repo
         self._snapshot_repo = snapshot_repo
+        self._proctoring_repo = proctoring_repo
 
     def execute(self, owner_id: UUID, exam_id: UUID, attempt_id: UUID) -> dict:
         exam = self._exam_repo.get_by_id(exam_id)
@@ -1819,6 +1951,9 @@ class GetAttemptAnswersReportUseCase:
             )
 
         snapshots = self._snapshot_repo.list_by_attempt(attempt_id)
+        integrity_events = (
+            self._proctoring_repo.list_by_attempt(attempt_id) if self._proctoring_repo else []
+        )
         all_answers = list(answers_by_question.values())
         recomputed_score = compute_attempt_score(exam, attempt, all_answers)
         has_graded_answers = any(answer.is_correct is True for answer in all_answers)
@@ -1830,6 +1965,10 @@ class GetAttemptAnswersReportUseCase:
             )
         else:
             display_score = attempt.score
+
+        fraud_score = compute_attempt_fraud_score(
+            attempt, integrity_events, exam.proctoring_sensitivity
+        )
 
         return {
             "attempt_id": str(attempt.id),
@@ -1843,6 +1982,7 @@ class GetAttemptAnswersReportUseCase:
             "video_url": attempt.attempt_video_url,
             "require_attempt_video": exam.require_camera and exam.require_attempt_video,
             "require_camera": exam.require_camera,
+            "fraud_score": fraud_score,
             "snapshots": [
                 {
                     "id": str(snapshot.id),
@@ -1851,6 +1991,16 @@ class GetAttemptAnswersReportUseCase:
                     "captured_at": snapshot.captured_at.isoformat() if snapshot.captured_at else None,
                 }
                 for snapshot in snapshots
+            ],
+            "integrity_events": [
+                {
+                    "id": str(event.id),
+                    "event_type": event.event_type.value,
+                    "confidence": event.confidence,
+                    "metadata": event.metadata or {},
+                    "created_at": event.created_at.isoformat() if event.created_at else None,
+                }
+                for event in integrity_events
             ],
         }
 

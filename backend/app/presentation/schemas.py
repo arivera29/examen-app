@@ -263,6 +263,24 @@ class AttemptSnapshotResponse(BaseModel):
     captured_at: Optional[datetime] = None
 
 
+class IntegrityEventResponse(BaseModel):
+    id: UUID
+    event_type: str
+    confidence: float
+    metadata: dict = {}
+    created_at: Optional[datetime] = None
+
+
+class IntegrityEventRequest(BaseModel):
+    event_type: str = Field(min_length=1)
+    confidence: float = Field(ge=0.0, le=1.0)
+    metadata: dict = {}
+
+
+class MouseIntegrityRequest(BaseModel):
+    mouse_events: list[dict] = []
+
+
 class AttemptAnswersReportResponse(BaseModel):
     attempt_id: UUID
     attempt_number: int = 1
@@ -275,6 +293,9 @@ class AttemptAnswersReportResponse(BaseModel):
     snapshots: list[AttemptSnapshotResponse] = []
     video_url: Optional[str] = None
     require_attempt_video: bool = False
+    require_camera: bool = False
+    fraud_score: float = 0.0
+    integrity_events: list[IntegrityEventResponse] = []
 
 
 class ExamSessionResponse(BaseModel):

@@ -105,7 +105,7 @@
           Controlar tiempo por pregunta (sin volver atrás ni cambiar respuestas)
         </mat-checkbox>
         <mat-checkbox formControlName="require_camera">
-          Usar cámara durante el examen (proctoring, capturas y video)
+          Usar cámara durante el examen (capturas, video y análisis facial)
         </mat-checkbox>
         @if (showCameraDependentFields) {
           <mat-checkbox formControlName="require_attempt_video" class="nested-option">
@@ -114,20 +114,20 @@
         }
       </div>
 
-      @if (showCameraDependentFields) {
-        <div class="sensitivity-field">
-          <div class="sensitivity-header">
-            <span>Sensibilidad de detección de fraude</span>
-            <strong>{{ sensitivityLabel(form.get('proctoring_sensitivity')?.value) }}</strong>
-          </div>
-          <mat-slider min="1" max="10" step="1" discrete showTickMarks>
-            <input matSliderThumb formControlName="proctoring_sensitivity" />
-          </mat-slider>
-          <p class="hint">
-            Valores bajos reducen alertas y el porcentaje de fraude reportado. Valores altos detectan más comportamientos sospechosos.
-          </p>
+      <div class="sensitivity-field">
+        <div class="sensitivity-header">
+          <span>Sensibilidad de detección de fraude</span>
+          <strong>{{ sensitivityLabel(form.get('proctoring_sensitivity')?.value) }}</strong>
         </div>
-      }
+        <mat-slider min="1" max="10" step="1" discrete showTickMarks>
+          <input matSliderThumb formControlName="proctoring_sensitivity" />
+        </mat-slider>
+        <p class="hint">
+          Aplica con o sin cámara: movimiento del puntero, copiar/pegar, cambio de pestaña,
+          posibles extensiones de IA y otras señales de integridad. Valores bajos reducen alertas;
+          valores altos detectan más comportamientos sospechosos.
+        </p>
+      </div>
 
       <div class="actions">
         <button mat-button type="button" (click)="cancelForm()">Cancelar</button>
@@ -163,11 +163,9 @@
               Espera {{ formatCooldownDuration(exam.attempt_cooldown_seconds) }}
             </span>
           }
-          @if (exam.require_camera !== false) {
-            <span class="badge badge-sensitivity">
-              Fraude: {{ sensitivityLabel((exam.proctoring_sensitivity ?? 0.4) * 10) }}
-            </span>
-          }
+          <span class="badge badge-sensitivity">
+            Integridad: {{ sensitivityLabel((exam.proctoring_sensitivity ?? 0.4) * 10) }}
+          </span>
           @if (exam.has_attempts) {
             <span class="badge badge-attempts">Con intentos</span>
           }

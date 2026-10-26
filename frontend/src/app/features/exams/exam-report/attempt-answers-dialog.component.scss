@@ -8,6 +8,44 @@
   font-weight: 500;
 }
 
+.integrity-section {
+  margin-bottom: 1.5rem;
+
+  h3 {
+    margin: 0 0 0.75rem;
+    font-size: 1rem;
+  }
+}
+
+.integrity-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.integrity-item {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.35rem 1rem;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  background: #fafafa;
+}
+
+.integrity-type {
+  font-weight: 500;
+}
+
+.integrity-meta {
+  color: #666;
+  font-size: 0.875rem;
+}
+
 .snapshots-section {
   margin-bottom: 1.5rem;
 

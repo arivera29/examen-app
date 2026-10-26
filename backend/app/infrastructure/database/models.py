@@ -377,3 +377,30 @@ def _apply_schema_updates():
                         "ADD COLUMN decision_deadline_at TIMESTAMP WITH TIME ZONE"
                     )
                 )
+
+    _ensure_proctoring_event_type_values()
+
+
+def _ensure_proctoring_event_type_values() -> None:
+    """Añade valores nuevos al enum PostgreSQL de proctoring_events.event_type."""
+    new_values = [
+        "clipboard_copy",
+        "clipboard_paste",
+        "idle_suspicious",
+        "ai_assist_suspected",
+        "devtools_suspected",
+        "right_click",
+        "print_attempt",
+        "shortcut_blocked",
+    ]
+    with engine.begin() as connection:
+        for value in new_values:
+            connection.execute(
+                text(
+                    "DO $$ BEGIN "
+                    f"ALTER TYPE proctoringeventtype ADD VALUE IF NOT EXISTS '{value}'; "
+                    "EXCEPTION WHEN duplicate_object THEN NULL; "
+                    "WHEN undefined_object THEN NULL; "
+                    "END $$;"
+                )
+            )
