@@ -1,0 +1,344 @@
+<div class="editor">
+  <!-- Barra superior: nombre, historial, lienzo, zoom, exportación y guardado -->
+  <header class="topbar">
+    <button mat-icon-button routerLink="/dashboard/whiteboards" matTooltip="Volver a mis pizarras">
+      <mat-icon>arrow_back</mat-icon>
+    </button>
+    <input
+      class="name-input"
+      [(ngModel)]="name"
+      (blur)="onNameCommit()"
+      (keydown.enter)="$any($event.target).blur()"
+      maxlength="255"
+      aria-label="Nombre de la pizarra"
+    />
+    <span [class]="'save-state ' + saveState">
+      @if (saveState === 'saving') {
+        <mat-spinner diameter="14"></mat-spinner>
+      } @else {
+        <mat-icon>{{ saveState === 'saved' ? 'cloud_done' : saveState === 'error' ? 'cloud_off' : 'cloud_queue' }}</mat-icon>
+      }
+      {{ saveLabel }}
+    </span>
+
+    <span class="spacer"></span>
+
+    <button mat-icon-button (click)="undo()" [disabled]="!canUndo" matTooltip="Deshacer (Ctrl+Z)">
+      <mat-icon>undo</mat-icon>
+    </button>
+    <button mat-icon-button (click)="redo()" [disabled]="!canRedo" matTooltip="Rehacer (Ctrl+Y)">
+      <mat-icon>redo</mat-icon>
+    </button>
+
+    <mat-divider vertical></mat-divider>
+
+    <button mat-icon-button (click)="zoomBy(1 / 1.25)" matTooltip="Alejar (Ctrl + rueda)">
+      <mat-icon>zoom_out</mat-icon>
+    </button>
+    <button mat-button class="zoom-label" (click)="resetZoom()" matTooltip="Zoom al 100 %">{{ zoomPercent }} %</button>
+    <button mat-icon-button (click)="zoomBy(1.25)" matTooltip="Acercar (Ctrl + rueda)">
+      <mat-icon>zoom_in</mat-icon>
+    </button>
+    <button mat-icon-button (click)="fitToScreen()" matTooltip="Ajustar a la pantalla">
+      <mat-icon>fit_screen</mat-icon>
+    </button>
+    <button mat-icon-button (click)="toggleGrid()" [class.active-toggle]="showGrid" matTooltip="Mostrar cuadrícula">
+      <mat-icon>grid_on</mat-icon>
+    </button>
+
+    <mat-divider vertical></mat-divider>
+
+    <button mat-icon-button [matMenuTriggerFor]="backgroundMenu" matTooltip="Color del lienzo">
+      <mat-icon [style.color]="background === '#ffffff' ? null : background">format_color_fill</mat-icon>
+    </button>
+    <mat-menu #backgroundMenu="matMenu" class="wb-menu">
+      <div class="menu-section" (click)="$event.stopPropagation()">
+        <p class="menu-title">Color del lienzo</p>
+        <div class="swatches">
+          @for (preset of backgroundPresets; track preset.value) {
+            <button
+              type="button"
+              class="swatch large"
+              [style.background]="preset.value"
+              [class.selected]="preset.value === background"
+              [attr.aria-label]="preset.label"
+              [title]="preset.label"
+              (click)="setBackground(preset.value)"
+            ></button>
+          }
+        </div>
+        <label class="custom-color">
+          Personalizado
+          <input type="color" [value]="background" (change)="setBackground($any($event.target).value)" />
+        </label>
+      </div>
+    </mat-menu>
+
+    <button mat-icon-button (click)="clearBoard()" [disabled]="!elements.length" matTooltip="Limpiar pizarra">
+      <mat-icon>delete_sweep</mat-icon>
+    </button>
+
+    <button mat-stroked-button [matMenuTriggerFor]="exportMenu">
+      <mat-icon>download</mat-icon>
+      Exportar
+    </button>
+    <mat-menu #exportMenu="matMenu">
+      <button mat-menu-item (click)="exportPng()">
+        <mat-icon>image</mat-icon>
+        <span>PNG</span>
+      </button>
+      <button mat-menu-item (click)="exportPng(true)">
+        <mat-icon>layers_clear</mat-icon>
+        <span>PNG con fondo transparente</span>
+      </button>
+      <button mat-menu-item (click)="exportPdf('a4')">
+        <mat-icon>picture_as_pdf</mat-icon>
+        <span>PDF (página A4)</span>
+      </button>
+      <button mat-menu-item (click)="exportPdf('fit')">
+        <mat-icon>picture_as_pdf</mat-icon>
+        <span>PDF (tamaño de la pizarra)</span>
+      </button>
+    </mat-menu>
+
+    <button mat-flat-button color="primary" (click)="save()" [disabled]="saveState === 'saving'" matTooltip="Guardar (Ctrl+S)">
+      <mat-icon>save</mat-icon>
+      Guardar
+    </button>
+  </header>
+
+  <!-- Panel de propiedades contextual a la herramienta / elemento seleccionado -->
+  <section class="props">
+    @switch (panelKind) {
+      @case ('pen') {
+        <ng-container *ngTemplateOutlet="colorPicker; context: { field: 'strokeColor', label: 'Color' }"></ng-container>
+        <ng-container *ngTemplateOutlet="widthSlider; context: { field: 'penWidth', label: 'Grosor', min: 1, max: 40 }"></ng-container>
+        <ng-container *ngTemplateOutlet="opacitySlider"></ng-container>
+      }
+      @case ('highlighter') {
+        <ng-container *ngTemplateOutlet="colorPicker; context: { field: 'highlighterColor', label: 'Color' }"></ng-container>
+        <ng-container *ngTemplateOutlet="widthSlider; context: { field: 'highlighterWidth', label: 'Grosor', min: 6, max: 60 }"></ng-container>
+      }
+      @case ('eraser') {
+        <div class="prop">
+          <span class="prop-label">Modo</span>
+          <mat-button-toggle-group [(ngModel)]="style.eraserMode" (ngModelChange)="onStyleChange()" hideSingleSelectionIndicator>
+            <mat-button-toggle value="stroke" matTooltip="Borra la tinta por donde pasa">Trazo</mat-button-toggle>
+            <mat-button-toggle value="object" matTooltip="Elimina elementos completos al tocarlos">Objeto</mat-button-toggle>
+          </mat-button-toggle-group>
+        </div>
+        <ng-container *ngTemplateOutlet="widthSlider; context: { field: 'eraserSize', label: 'Tamaño', min: 4, max: 120 }"></ng-container>
+      }
+      @case ('shape') {
+        <ng-container *ngTemplateOutlet="colorPicker; context: { field: 'strokeColor', label: 'Borde' }"></ng-container>
+        <ng-container *ngTemplateOutlet="colorPicker; context: { field: 'fillColor', label: 'Relleno', allowNone: true }"></ng-container>
+        <ng-container *ngTemplateOutlet="widthSlider; context: { field: 'strokeWidth', label: 'Grosor del borde', min: 0, max: 30 }"></ng-container>
+        <ng-container *ngTemplateOutlet="lineStyleSelect"></ng-container>
+        <ng-container *ngTemplateOutlet="opacitySlider"></ng-container>
+      }
+      @case ('line') {
+        <ng-container *ngTemplateOutlet="colorPicker; context: { field: 'strokeColor', label: 'Color' }"></ng-container>
+        <ng-container *ngTemplateOutlet="widthSlider; context: { field: 'strokeWidth', label: 'Grosor', min: 1, max: 30 }"></ng-container>
+        <ng-container *ngTemplateOutlet="lineStyleSelect"></ng-container>
+        <ng-container *ngTemplateOutlet="opacitySlider"></ng-container>
+      }
+      @case ('text') {
+        <ng-container *ngTemplateOutlet="colorPicker; context: { field: 'textColor', label: 'Color' }"></ng-container>
+        <ng-container *ngTemplateOutlet="widthSlider; context: { field: 'fontSize', label: 'Tamaño', min: 10, max: 160 }"></ng-container>
+        <div class="prop">
+          <span class="prop-label">Fuente</span>
+          <mat-select class="compact-select" [(ngModel)]="style.fontFamily" (ngModelChange)="onStyleChange()">
+            @for (font of fontFamilies; track font.value) {
+              <mat-option [value]="font.value"><span [style.font-family]="font.value">{{ font.label }}</span></mat-option>
+            }
+          </mat-select>
+        </div>
+        <div class="prop">
+          <span class="prop-label">Estilo</span>
+          <div class="inline">
+            <button mat-icon-button [class.active-toggle]="style.bold" (mousedown)="$event.preventDefault()" (click)="style.bold = !style.bold; onStyleChange()" matTooltip="Negrita">
+              <mat-icon>format_bold</mat-icon>
+            </button>
+            <button mat-icon-button [class.active-toggle]="style.italic" (mousedown)="$event.preventDefault()" (click)="style.italic = !style.italic; onStyleChange()" matTooltip="Cursiva">
+              <mat-icon>format_italic</mat-icon>
+            </button>
+          </div>
+        </div>
+        <ng-container *ngTemplateOutlet="opacitySlider"></ng-container>
+      }
+      @default {
+        <span class="hint">
+          Haz clic en un elemento para seleccionarlo, arrástralo para moverlo o arrastra el fondo para desplazarte.
+          Doble clic sobre un texto para editarlo.
+        </span>
+      }
+    }
+
+    @if (tool === 'select' && selectedElement) {
+      <span class="spacer"></span>
+      <div class="selection-actions">
+        <button mat-icon-button (click)="bringToFront()" matTooltip="Traer al frente"><mat-icon>flip_to_front</mat-icon></button>
+        <button mat-icon-button (click)="sendToBack()" matTooltip="Enviar al fondo"><mat-icon>flip_to_back</mat-icon></button>
+        <button mat-icon-button (click)="duplicateSelected()" matTooltip="Duplicar (Ctrl+D)"><mat-icon>content_copy</mat-icon></button>
+        <button mat-icon-button color="warn" (click)="deleteSelected()" matTooltip="Eliminar (Supr)"><mat-icon>delete</mat-icon></button>
+      </div>
+    }
+  </section>
+
+  <div class="workspace">
+    <!-- Barra de herramientas -->
+    <nav class="toolrail" aria-label="Herramientas de dibujo">
+      @for (t of drawingTools; track t.id) {
+        <button
+          mat-icon-button
+          [class.active-tool]="tool === t.id"
+          (click)="setTool(t.id)"
+          [matTooltip]="t.label + ' (' + t.shortcut + ')'"
+          matTooltipPosition="right"
+          [attr.aria-label]="t.label"
+          [attr.aria-pressed]="tool === t.id"
+        >
+          @if (t.icon === 'eraser') {
+            <svg class="tool-svg" viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                fill="currentColor"
+                d="M16.24 3.56l4.95 4.94c.78.79.78 2.05 0 2.84L12 20.53a4.008 4.008 0 0 1-5.66 0L2.81 17c-.78-.79-.78-2.05 0-2.84l10.6-10.6c.79-.78 2.05-.78 2.83 0M4.22 15.58l3.54 3.53c.78.79 2.04.79 2.83 0l3.53-3.53-4.95-4.95-4.95 4.95z"
+              />
+            </svg>
+          } @else {
+            <mat-icon>{{ t.icon }}</mat-icon>
+          }
+        </button>
+      }
+      <div class="rail-divider"></div>
+      @for (t of shapeTools; track t.id) {
+        <button
+          mat-icon-button
+          [class.active-tool]="tool === t.id"
+          (click)="setTool(t.id)"
+          [matTooltip]="t.label + ' (' + t.shortcut + ') · Shift para proporción'"
+          matTooltipPosition="right"
+          [attr.aria-label]="t.label"
+          [attr.aria-pressed]="tool === t.id"
+        >
+          <mat-icon [class.rotate-45]="t.id === 'diamond'">{{ t.icon }}</mat-icon>
+        </button>
+      }
+    </nav>
+
+    <!-- Lienzo -->
+    <div class="viewport" #viewport (wheel)="onWheel($event)">
+      @if (loading) {
+        <mat-spinner class="loading" diameter="40"></mat-spinner>
+      }
+      <div class="board" [style.width.px]="canvasCssWidth" [style.height.px]="canvasCssHeight" [class.hidden]="loading">
+        <canvas
+          #canvas
+          [class]="cursorClass"
+          [style.width.px]="canvasCssWidth"
+          [style.height.px]="canvasCssHeight"
+          (pointerdown)="onPointerDown($event)"
+          (pointermove)="onPointerMove($event)"
+          (pointerup)="onPointerUp()"
+          (pointercancel)="onPointerUp()"
+          (pointerleave)="onPointerLeave()"
+          (dblclick)="onDoubleClick($event)"
+        ></canvas>
+        @if (textEditor) {
+          <textarea
+            #textInput
+            class="text-editor"
+            [ngStyle]="textEditorStyle"
+            [(ngModel)]="textEditor.value"
+            (keydown)="onTextKeydown($event)"
+            (blur)="commitText()"
+            spellcheck="false"
+            placeholder="Escribe…"
+            aria-label="Texto"
+          ></textarea>
+        }
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Plantillas reutilizables de controles -->
+<ng-template #colorPicker let-field="field" let-label="label" let-allowNone="allowNone">
+  <div class="prop">
+    <span class="prop-label">{{ label }}</span>
+    <button
+      type="button"
+      class="color-trigger"
+      [matMenuTriggerFor]="paletteMenu"
+      [attr.aria-label]="label + ': ' + (allowNone && !style.fillEnabled ? 'sin relleno' : $any(style)[field])"
+    >
+      @if (allowNone && !style.fillEnabled) {
+        <span class="swatch none"></span>
+      } @else {
+        <span class="swatch" [style.background]="$any(style)[field]"></span>
+      }
+      <mat-icon>arrow_drop_down</mat-icon>
+    </button>
+    <mat-menu #paletteMenu="matMenu" class="wb-menu">
+      <div class="menu-section">
+        <p class="menu-title">{{ label }}</p>
+        <div class="swatches">
+          @if (allowNone) {
+            <button
+              type="button"
+              class="swatch large none"
+              [class.selected]="!style.fillEnabled"
+              title="Sin relleno"
+              aria-label="Sin relleno"
+              (click)="style.fillEnabled = false; onStyleChange()"
+            ></button>
+          }
+          @for (color of colorPresets; track color) {
+            <button
+              type="button"
+              class="swatch large"
+              [style.background]="color"
+              [class.selected]="$any(style)[field] === color && (!allowNone || style.fillEnabled)"
+              [title]="color"
+              [attr.aria-label]="label + ' ' + color"
+              (click)="pickColor(field, color)"
+            ></button>
+          }
+        </div>
+        <label class="custom-color" (click)="$event.stopPropagation()">
+          Personalizado
+          <input type="color" [value]="$any(style)[field]" (input)="pickColor(field, $any($event.target).value)" />
+        </label>
+      </div>
+    </mat-menu>
+  </div>
+</ng-template>
+
+<ng-template #widthSlider let-field="field" let-label="label" let-min="min" let-max="max">
+  <div class="prop">
+    <span class="prop-label">{{ label }}: {{ $any(style)[field] }}</span>
+    <mat-slider [min]="min" [max]="max" step="1" class="prop-slider">
+      <input matSliderThumb [ngModel]="$any(style)[field]" (ngModelChange)="setStyleValue(field, $event)" />
+    </mat-slider>
+  </div>
+</ng-template>
+
+<ng-template #opacitySlider>
+  <div class="prop">
+    <span class="prop-label">Opacidad: {{ (style.opacity * 100).toFixed(0) }} %</span>
+    <mat-slider min="0.1" max="1" step="0.05" class="prop-slider">
+      <input matSliderThumb [(ngModel)]="style.opacity" (ngModelChange)="onStyleChange()" />
+    </mat-slider>
+  </div>
+</ng-template>
+
+<ng-template #lineStyleSelect>
+  <div class="prop">
+    <span class="prop-label">Tipo de línea</span>
+    <mat-select class="compact-select" [(ngModel)]="style.lineStyle" (ngModelChange)="onStyleChange()">
+      @for (ls of lineStyles; track ls.value) {
+        <mat-option [value]="ls.value">{{ ls.label }}</mat-option>
+      }
+    </mat-select>
+  </div>
+</ng-template>

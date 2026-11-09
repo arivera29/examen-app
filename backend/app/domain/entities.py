@@ -165,3 +165,17 @@ class AttemptSnapshot:
     image_url: str
     id: UUID = field(default_factory=uuid4)
     captured_at: datetime = field(default_factory=datetime.utcnow)
+
+
+@dataclass
+class Whiteboard:
+    name: str
+    owner_id: UUID
+    id: UUID = field(default_factory=uuid4)
+    background_color: str = "#ffffff"
+    width: int = 1920
+    height: int = 1080
+    content: list[dict] = field(default_factory=list)
+    thumbnail: Optional[str] = None
+    created_at: datetime = field(default_factory=datetime.utcnow)
+    updated_at: datetime = field(default_factory=datetime.utcnow)

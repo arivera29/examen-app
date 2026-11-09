@@ -13,6 +13,10 @@ import {
   PaginatedQuestions,
   QuestionBackupRestoreResult,
   Topic,
+  CreateWhiteboardPayload,
+  UpdateWhiteboardPayload,
+  Whiteboard,
+  WhiteboardSummary,
 } from '../models';
 
 @Injectable({ providedIn: 'root' })
@@ -117,6 +121,32 @@ export class ApiService {
 
   deleteTopic(topicId: string): Observable<void> {
     return this.http.delete<void>(`${this.baseUrl}/topics/${topicId}`);
+  }
+
+  getWhiteboards(): Observable<WhiteboardSummary[]> {
+    return this.http.get<WhiteboardSummary[]>(`${this.baseUrl}/whiteboards`);
+  }
+
+  getWhiteboard(whiteboardId: string): Observable<Whiteboard> {
+    return this.http.get<Whiteboard>(`${this.baseUrl}/whiteboards/${whiteboardId}`);
+  }
+
+  createWhiteboard(payload: CreateWhiteboardPayload): Observable<Whiteboard> {
+    return this.http.post<Whiteboard>(`${this.baseUrl}/whiteboards`, payload);
+  }
+
+  updateWhiteboard(whiteboardId: string, payload: UpdateWhiteboardPayload): Observable<Whiteboard> {
+    return this.http.put<Whiteboard>(`${this.baseUrl}/whiteboards/${whiteboardId}`, payload);
+  }
+
+  duplicateWhiteboard(whiteboardId: string, name?: string): Observable<WhiteboardSummary> {
+    return this.http.post<WhiteboardSummary>(`${this.baseUrl}/whiteboards/${whiteboardId}/duplicate`, {
+      name: name ?? null,
+    });
+  }
+
+  deleteWhiteboard(whiteboardId: string): Observable<void> {
+    return this.http.delete<void>(`${this.baseUrl}/whiteboards/${whiteboardId}`);
   }
 
   getExams(): Observable<Exam[]> {

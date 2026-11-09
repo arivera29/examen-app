@@ -225,6 +225,24 @@ class AttemptSnapshotModel(Base):
     attempt = relationship("ExamAttemptModel", back_populates="snapshots")
 
 
+
+class WhiteboardModel(Base):
+    __tablename__ = "whiteboards"
+
+    id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    owner_id = Column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    name = Column(String(255), nullable=False)
+    background_color = Column(String(20), nullable=False, default="#ffffff")
+    width = Column(Integer, nullable=False, default=1920)
+    height = Column(Integer, nullable=False, default=1080)
+    content = Column(JSON, nullable=False, default=list)
+    thumbnail = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
 engine = create_engine(settings.database_url, pool_pre_ping=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 

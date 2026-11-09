@@ -24,6 +24,11 @@
 .content {
   padding: 1.5rem;
   max-width: 1200px;
+
+  // El editor de pizarras aprovecha todo el ancho disponible.
+  &:has(app-whiteboard-editor) {
+    max-width: none;
+  }
 }
 
 .user-name {

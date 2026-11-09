@@ -9,6 +9,7 @@ from app.config import settings
 from app.infrastructure.database.models import init_db
 from app.infrastructure.services.email_service import log_email_configuration
 from app.presentation.api.routes import router
+from app.presentation.api.whiteboard_routes import router as whiteboard_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -39,6 +40,7 @@ os.makedirs(settings.upload_dir, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=settings.upload_dir), name="uploads")
 
 app.include_router(router, prefix="/api/v1")
+app.include_router(whiteboard_router, prefix="/api/v1")
 
 
 @app.on_event("startup")

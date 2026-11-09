@@ -1,7 +1,7 @@
 from uuid import UUID
 
 from sqlalchemy import exists, func, or_, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, defer
 
 from app.application.attempt_access import count_finished_attempts, get_in_progress_attempt
 from app.domain.entities import (
@@ -17,6 +17,7 @@ from app.domain.entities import (
     QuestionOption,
     Topic,
     User,
+    Whiteboard,
 )
 from app.domain.enums import AttemptPolicy, AttemptStatus, SnapshotType
 from app.domain.repositories import (
@@ -30,6 +31,7 @@ from app.domain.repositories import (
     QuestionRepository,
     TopicRepository,
     UserRepository,
+    WhiteboardRepository,
 )
 from app.infrastructure.database.models import (
     AnswerModel,
@@ -43,6 +45,7 @@ from app.infrastructure.database.models import (
     QuestionOptionModel,
     TopicModel,
     UserModel,
+    WhiteboardModel,
 )
 
 
@@ -1026,3 +1029,88 @@ class SQLAlchemyAttemptSnapshotRepository(AttemptSnapshotRepository):
             )
             .count()
         )
+
+
+def _whiteboard_to_entity(model: WhiteboardModel, include_content: bool = True) -> Whiteboard:
+    return Whiteboard(
+        id=model.id,
+        owner_id=model.owner_id,
+        name=model.name,
+        background_color=model.background_color,
+        width=model.width,
+        height=model.height,
+        content=list(model.content or []) if include_content else [],
+        thumbnail=model.thumbnail,
+        created_at=model.created_at,
+        updated_at=model.updated_at,
+    )
+
+
+class SQLAlchemyWhiteboardRepository(WhiteboardRepository):
+    def __init__(self, session: Session):
+        self._session = session
+
+    def create(self, whiteboard: Whiteboard) -> Whiteboard:
+        model = WhiteboardModel(
+            id=whiteboard.id,
+            owner_id=whiteboard.owner_id,
+            name=whiteboard.name,
+            background_color=whiteboard.background_color,
+            width=whiteboard.width,
+            height=whiteboard.height,
+            content=whiteboard.content,
+            thumbnail=whiteboard.thumbnail,
+        )
+        self._session.add(model)
+        self._session.commit()
+        self._session.refresh(model)
+        return _whiteboard_to_entity(model)
+
+    def get_by_id(self, whiteboard_id: UUID) -> Whiteboard | None:
+        model = (
+            self._session.query(WhiteboardModel)
+            .filter(WhiteboardModel.id == whiteboard_id)
+            .first()
+        )
+        return _whiteboard_to_entity(model) if model else None
+
+    def list_by_owner(self, owner_id: UUID) -> list[Whiteboard]:
+        models = (
+            self._session.query(WhiteboardModel)
+            .options(defer(WhiteboardModel.content))
+            .filter(WhiteboardModel.owner_id == owner_id)
+            .order_by(WhiteboardModel.updated_at.desc(), WhiteboardModel.created_at.desc())
+            .all()
+        )
+        return [_whiteboard_to_entity(m, include_content=False) for m in models]
+
+    def update(self, whiteboard: Whiteboard) -> Whiteboard:
+        model = (
+            self._session.query(WhiteboardModel)
+            .filter(WhiteboardModel.id == whiteboard.id)
+            .first()
+        )
+        if not model:
+            raise ValueError("Whiteboard not found")
+        model.name = whiteboard.name
+        model.background_color = whiteboard.background_color
+        model.width = whiteboard.width
+        model.height = whiteboard.height
+        model.content = whiteboard.content
+        model.thumbnail = whiteboard.thumbnail
+        model.updated_at = func.now()
+        self._session.commit()
+        self._session.refresh(model)
+        return _whiteboard_to_entity(model)
+
+    def delete(self, whiteboard_id: UUID) -> bool:
+        model = (
+            self._session.query(WhiteboardModel)
+            .filter(WhiteboardModel.id == whiteboard_id)
+            .first()
+        )
+        if not model:
+            return False
+        self._session.delete(model)
+        self._session.commit()
+        return True

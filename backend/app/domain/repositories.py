@@ -13,6 +13,7 @@ from app.domain.entities import (
     QuestionBank,
     Topic,
     User,
+    Whiteboard,
 )
 
 
@@ -206,3 +207,20 @@ class AttemptSnapshotRepository(ABC):
 
     @abstractmethod
     def count_by_type(self, attempt_id: UUID, snapshot_type) -> int: ...
+
+
+class WhiteboardRepository(ABC):
+    @abstractmethod
+    def create(self, whiteboard: Whiteboard) -> Whiteboard: ...
+
+    @abstractmethod
+    def get_by_id(self, whiteboard_id: UUID) -> Optional[Whiteboard]: ...
+
+    @abstractmethod
+    def list_by_owner(self, owner_id: UUID) -> list[Whiteboard]: ...
+
+    @abstractmethod
+    def update(self, whiteboard: Whiteboard) -> Whiteboard: ...
+
+    @abstractmethod
+    def delete(self, whiteboard_id: UUID) -> bool: ...

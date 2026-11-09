@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field
@@ -309,3 +309,38 @@ class ExamSessionResponse(BaseModel):
     locked_question_ids: list[UUID] = []
     question_remaining_seconds: Optional[int] = None
     resumed: bool = False
+
+
+class CreateWhiteboardRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    background_color: Optional[str] = None
+    width: Optional[int] = None
+    height: Optional[int] = None
+
+
+class UpdateWhiteboardRequest(BaseModel):
+    name: Optional[str] = Field(default=None, max_length=255)
+    background_color: Optional[str] = None
+    width: Optional[int] = None
+    height: Optional[int] = None
+    content: Optional[list[dict[str, Any]]] = None
+    thumbnail: Optional[str] = None
+
+
+class DuplicateWhiteboardRequest(BaseModel):
+    name: Optional[str] = Field(default=None, max_length=255)
+
+
+class WhiteboardSummaryResponse(BaseModel):
+    id: UUID
+    name: str
+    background_color: str
+    width: int
+    height: int
+    thumbnail: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class WhiteboardResponse(WhiteboardSummaryResponse):
+    content: list[dict[str, Any]] = []

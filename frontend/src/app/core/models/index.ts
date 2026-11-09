@@ -208,3 +208,35 @@ export interface AttemptAnswersReport {
   fraud_score?: number;
   integrity_events?: IntegrityEventDetail[];
 }
+
+export interface WhiteboardSummary {
+  id: string;
+  name: string;
+  background_color: string;
+  width: number;
+  height: number;
+  thumbnail?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Whiteboard extends WhiteboardSummary {
+  // Elementos vectoriales de la pizarra; la forma concreta se define en features/whiteboards.
+  content: Record<string, unknown>[];
+}
+
+export interface CreateWhiteboardPayload {
+  name: string;
+  background_color?: string;
+  width?: number;
+  height?: number;
+}
+
+export interface UpdateWhiteboardPayload {
+  name?: string;
+  background_color?: string;
+  width?: number;
+  height?: number;
+  content?: Record<string, unknown>[];
+  thumbnail?: string | null;
+}

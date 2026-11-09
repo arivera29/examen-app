@@ -30,6 +30,18 @@ export const routes: Routes = [
       { path: 'exams', component: ExamsComponent },
       { path: 'exams/:id/invite', component: ExamInviteComponent },
       { path: 'exams/:id/report', component: ExamReportComponent },
+      {
+        path: 'whiteboards',
+        loadComponent: () =>
+          import('./features/whiteboards/whiteboards.component').then((m) => m.WhiteboardsComponent),
+      },
+      {
+        path: 'whiteboards/:id',
+        loadComponent: () =>
+          import('./features/whiteboards/whiteboard-editor/whiteboard-editor.component').then(
+            (m) => m.WhiteboardEditorComponent,
+          ),
+      },
       { path: 'mfa', component: MfaSetupComponent },
     ],
   },

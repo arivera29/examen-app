@@ -1,0 +1,98 @@
+<h1>Pizarras</h1>
+
+<mat-card class="form-card">
+  @if (!showForm) {
+    <button mat-flat-button color="primary" (click)="openCreateForm()">
+      <mat-icon>add</mat-icon>
+      Nueva pizarra
+    </button>
+  } @else {
+    <h2>Nueva pizarra</h2>
+    <form [formGroup]="form" (ngSubmit)="create()" class="create-form">
+      <mat-form-field appearance="outline" class="name-field">
+        <mat-label>Nombre</mat-label>
+        <input matInput formControlName="name" maxlength="255" cdkFocusInitial />
+      </mat-form-field>
+      <mat-form-field appearance="outline">
+        <mat-label>Tamaño del lienzo</mat-label>
+        <mat-select formControlName="size">
+          @for (preset of sizePresets; track preset.label; let i = $index) {
+            <mat-option [value]="i">{{ preset.label }}</mat-option>
+          }
+        </mat-select>
+      </mat-form-field>
+      <div class="bg-field">
+        <span class="bg-label">Color del lienzo</span>
+        <div class="swatches">
+          @for (preset of backgroundPresets; track preset.value) {
+            <button
+              type="button"
+              class="swatch"
+              [style.background]="preset.value"
+              [class.selected]="form.controls.background_color.value === preset.value"
+              [matTooltip]="preset.label"
+              [attr.aria-label]="preset.label"
+              (click)="form.controls.background_color.setValue(preset.value)"
+            ></button>
+          }
+          <input
+            type="color"
+            class="color-input"
+            [value]="form.controls.background_color.value"
+            (input)="form.controls.background_color.setValue($any($event.target).value)"
+            matTooltip="Color personalizado"
+          />
+        </div>
+      </div>
+      <div class="actions">
+        <button mat-button type="button" (click)="cancelForm()">Cancelar</button>
+        <button mat-flat-button color="primary" type="submit" [disabled]="form.invalid || creating">Crear y abrir</button>
+      </div>
+    </form>
+  }
+</mat-card>
+
+@if (loading) {
+  <p class="empty">Cargando pizarras…</p>
+} @else {
+  <div class="grid">
+    @for (wb of whiteboards; track wb.id) {
+      <mat-card class="wb-card">
+        <button type="button" class="thumb" [style.background]="wb.background_color" (click)="open(wb)" [attr.aria-label]="'Abrir ' + wb.name">
+          @if (wb.thumbnail) {
+            <img [src]="wb.thumbnail" alt="" />
+          } @else {
+            <mat-icon>draw</mat-icon>
+          }
+        </button>
+        <div class="wb-info">
+          @if (renamingId === wb.id) {
+            <form [formGroup]="renameForm" (ngSubmit)="saveRename(wb)" class="rename-form">
+              <input formControlName="name" maxlength="255" aria-label="Nuevo nombre" (keydown.escape)="cancelRename()" />
+              <button mat-icon-button type="submit" matTooltip="Guardar"><mat-icon>check</mat-icon></button>
+              <button mat-icon-button type="button" (click)="cancelRename()" matTooltip="Cancelar"><mat-icon>close</mat-icon></button>
+            </form>
+          } @else {
+            <div class="wb-text">
+              <strong class="wb-name" [title]="wb.name">{{ wb.name }}</strong>
+              <span class="wb-meta">Editada {{ wb.updated_at | date: 'dd/MM/yyyy HH:mm' }} · {{ wb.width }}×{{ wb.height }}</span>
+            </div>
+            <button mat-icon-button [matMenuTriggerFor]="menu" aria-label="Más opciones">
+              <mat-icon>more_vert</mat-icon>
+            </button>
+            <mat-menu #menu="matMenu">
+              <button mat-menu-item (click)="open(wb)"><mat-icon>open_in_new</mat-icon><span>Abrir</span></button>
+              <button mat-menu-item (click)="startRename(wb)"><mat-icon>edit</mat-icon><span>Renombrar</span></button>
+              <button mat-menu-item (click)="duplicate(wb)"><mat-icon>content_copy</mat-icon><span>Duplicar</span></button>
+              <button mat-menu-item (click)="confirmDelete(wb)"><mat-icon color="warn">delete</mat-icon><span>Eliminar</span></button>
+            </mat-menu>
+          }
+        </div>
+      </mat-card>
+    } @empty {
+      <mat-card class="empty-card">
+        <p class="empty">No tienes pizarras. Crea una para empezar a dibujar.</p>
+      </mat-card>
+    }
+  </div>
+}
