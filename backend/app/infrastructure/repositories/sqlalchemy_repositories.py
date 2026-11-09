@@ -207,7 +207,12 @@ class SQLAlchemyQuestionBankRepository(QuestionBankRepository):
         return _bank_to_entity(model, include_questions=True) if model else None
 
     def list_by_owner(self, owner_id: UUID) -> list[QuestionBank]:
-        models = self._session.query(QuestionBankModel).filter(QuestionBankModel.owner_id == owner_id).all()
+        models = (
+            self._session.query(QuestionBankModel)
+            .filter(QuestionBankModel.owner_id == owner_id)
+            .order_by(QuestionBankModel.created_at.desc())
+            .all()
+        )
         return [_bank_to_entity(m) for m in models]
 
     def update(self, bank: QuestionBank) -> QuestionBank:
@@ -482,7 +487,12 @@ class SQLAlchemyExamRepository(ExamRepository):
         return _exam_to_entity(model) if model else None
 
     def list_by_owner(self, owner_id: UUID) -> list[Exam]:
-        models = self._session.query(ExamModel).filter(ExamModel.owner_id == owner_id).all()
+        models = (
+            self._session.query(ExamModel)
+            .filter(ExamModel.owner_id == owner_id)
+            .order_by(ExamModel.created_at.desc())
+            .all()
+        )
         return [_exam_to_entity(m) for m in models]
 
     def count_by_question_bank(self, question_bank_id: UUID) -> int:
